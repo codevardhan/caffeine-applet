@@ -1,0 +1,11 @@
+[package]
+name = "caffeine-applet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[dependencies.libcosmic]
+git = "https://github.com/pop-os/libcosmic"
+default-features = false
+features = ["applet", "tokio", "wayland"]
