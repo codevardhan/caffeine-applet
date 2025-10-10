@@ -40,7 +40,7 @@ fn enable_caffeine() -> Result<(), String> {
     }
 
     let child = Command::new("systemd-inhibit")
-        .arg("--what=idle")
+        .arg("--what=idle:sleep")
         .arg("--why=Caffeine session active")
         .arg("--mode=block")
         .arg("sleep")
