@@ -89,10 +89,10 @@ install:
         coffee-full.svg|active.svg)
           # install as the default AND as an explicit variant
           install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.svg"
-          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}-full.svg"
+          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.On.svg"
           ;;
         coffee-empty.svg|inactive.svg)
-          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}-empty.svg"
+          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.Off.svg"
           ;;
         # already namespaced files (rare)
         {{appid}}*.svg)
@@ -113,8 +113,8 @@ uninstall:
     rm -f {{bin-dst}} {{desktop-dst}} {{appdata-dst}}
     rm -f \
       {{app-icons-dst-dir}}/{{appid}}.svg \
-      {{app-icons-dst-dir}}/{{appid}}-full.svg \
-      {{app-icons-dst-dir}}/{{appid}}-empty.svg \
+      {{app-icons-dst-dir}}/{{appid}}.On.svg \
+      {{app-icons-dst-dir}}/{{appid}}.Off.svg \
       {{app-icons-dst-dir}}/{{appid}}-*.svg
 
 
