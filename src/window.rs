@@ -1,3 +1,4 @@
+use cosmic::widget::svg::Handle;
 use std::{fs, path::PathBuf, process::Command};
 
 // Mandatory COSMIC imports
@@ -7,10 +8,18 @@ use cosmic::Element;
 
 use cosmic::widget::{button, svg};
 
-const ID: &str = "com.example.CaffeineApplet";
+const ID: &str = "com.github.codevardhan.caffeine-applet";
 
-static COFFEE_EMPTY: &[u8] = include_bytes!("../assets/coffee-empty.svg");
-static COFFEE_FULL: &[u8] = include_bytes!("../assets/coffee-full.svg");
+fn icon_path(enabled: bool) -> std::path::PathBuf {
+    use std::path::PathBuf;
+
+    let name = if enabled {
+        format!("{ID}-full.svg")
+    } else {
+        format!("{ID}-empty.svg")
+    };
+    PathBuf::from("/usr/share/icons/hicolor/scalable/apps").join(name)
+}
 
 #[derive(Default)]
 pub struct CaffeineApplet {
@@ -51,7 +60,7 @@ fn enable_caffeine() -> Result<(), String> {
     let process_id = child.id();
     fs::write(get_id_path(), process_id.to_string()).map_err(|e| e.to_string())?;
 
-    println!("☕ Caffeine session enabled");
+    // println!("☕ Caffeine session enabled");
     Ok(())
 }
 
@@ -64,7 +73,7 @@ fn disable_caffeine() -> Result<(), String> {
 
         fs::remove_file(get_id_path()).map_err(|e| e.to_string())?;
 
-        println!("😴 Caffeine session disabled");
+        // println!("😴 Caffeine session disabled");
         Ok(())
     } else {
         Err("There's no caffeine session enabled".to_string())
@@ -93,7 +102,10 @@ impl cosmic::Application for CaffeineApplet {
         &mut self.core
     }
 
-    fn init(core: Core, _flags: Self::Flags) -> (Self, Task<cosmic::app::Message<Self::Message>>) {
+    fn init(
+        core: Core,
+        _flags: Self::Flags,
+    ) -> (Self, cosmic::Task<cosmic::Action<Self::Message>>) {
         // If a PID file exists, that means caffeine is already running
         let is_enabled = get_id().is_some();
 
@@ -101,12 +113,12 @@ impl cosmic::Application for CaffeineApplet {
         (window, Task::none())
     }
 
-    fn update(&mut self, message: Self::Message) -> Task<cosmic::app::Message<Self::Message>> {
+    fn update(&mut self, message: Self::Message) -> cosmic::Task<cosmic::Action<Self::Message>> {
         match message {
             Message::ToggleCaffeine => {
                 let desired_state = !self.is_enabled;
                 if let Err(err) = do_caffeine(desired_state) {
-                    println!("Error toggling caffeine: {}", err);
+                    // println!("Error toggling caffeine: {}", err);
                 } else {
                     // Only update self.is_enabled if success
                     self.is_enabled = desired_state;
@@ -117,13 +129,7 @@ impl cosmic::Application for CaffeineApplet {
     }
 
     fn view(&self) -> Element<Self::Message> {
-        let raw_svg = if self.is_enabled {
-            COFFEE_FULL
-        } else {
-            COFFEE_EMPTY
-        };
-
-        let handle = cosmic::widget::svg::Handle::from_memory(raw_svg.to_vec());
+        let handle = Handle::from_path(icon_path(self.is_enabled));
         let icon = svg(handle).width(24).height(24);
 
         button::custom(icon)
