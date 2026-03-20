@@ -1,18 +1,27 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::os::fd::OwnedFd;
 
-// Mandatory COSMIC imports
 use cosmic::app::Core;
 use cosmic::iced::Task;
 use cosmic::Element;
+use zbus::blocking::Connection;
+use zbus::zvariant::OwnedFd as ZbusFd;
 
 const ID: &str = "com.github.codevardhan.caffeine-applet";
 const ON: &str = "com.github.codevardhan.caffeine-applet.On";
 const OFF: &str = "com.github.codevardhan.caffeine-applet.Off";
 
-#[derive(Default)]
 pub struct CaffeineApplet {
     core: Core,
-    enabled: bool,
+    inhibit_fd: Option<OwnedFd>,
+}
+
+impl Default for CaffeineApplet {
+    fn default() -> Self {
+        Self {
+            core: Core::default(),
+            inhibit_fd: None,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -20,60 +29,21 @@ pub enum Message {
     ToggleCaffeine,
 }
 
-fn get_id_path() -> PathBuf {
-    PathBuf::from("/tmp/caffeine-id.txt")
-}
+/// Ask logind for an idle+sleep inhibit lock.
+/// Returns an OwnedFd — the inhibit stays active as long as this fd is open.
+fn acquire_inhibit() -> Result<OwnedFd, Box<dyn std::error::Error>> {
+    let conn = Connection::system()?;
+    let reply: ZbusFd = conn.call_method(
+        Some("org.freedesktop.login1"),
+        "/org/freedesktop/login1",
+        Some("org.freedesktop.login1.Manager"),
+        "Inhibit",
+        &("idle:sleep", "Caffeine Applet", "Caffeine session active", "block"),
+    )?
+    .body()
+    .deserialize()?;
 
-fn get_id() -> Option<String> {
-    match fs::read_to_string(get_id_path()) {
-        Ok(cookie) => Some(cookie),
-        Err(_) => None,
-    }
-}
-
-fn enable_caffeine() -> Result<(), String> {
-    if let Some(_) = get_id() {
-        return Err("Caffeine is currently enabled".to_string());
-    }
-
-    let child = Command::new("systemd-inhibit")
-        .arg("--what=idle:sleep")
-        .arg("--why=Caffeine session active")
-        .arg("--mode=block")
-        .arg("sleep")
-        .arg("infinity")
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    let process_id = child.id();
-    fs::write(get_id_path(), process_id.to_string()).map_err(|e| e.to_string())?;
-
-    // println!("☕ Caffeine session enabled");
-    Ok(())
-}
-
-fn disable_caffeine() -> Result<(), String> {
-    if let Some(id) = get_id() {
-        Command::new("kill")
-            .arg(&id)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-
-        fs::remove_file(get_id_path()).map_err(|e| e.to_string())?;
-
-        // println!("😴 Caffeine session disabled");
-        Ok(())
-    } else {
-        Err("There's no caffeine session enabled".to_string())
-    }
-}
-
-fn do_caffeine(is_active: bool) -> Result<(), String> {
-    if is_active {
-        enable_caffeine()
-    } else {
-        disable_caffeine()
-    }
+    Ok(reply.into())
 }
 
 impl cosmic::Application for CaffeineApplet {
@@ -94,32 +64,35 @@ impl cosmic::Application for CaffeineApplet {
         core: Core,
         _flags: Self::Flags,
     ) -> (Self, cosmic::Task<cosmic::Action<Self::Message>>) {
-        // If a PID file exists, that means caffeine is already running
-        let enabled = get_id().is_some();
-
-        let window = CaffeineApplet { core, enabled };
+        let window = CaffeineApplet {
+            core,
+            inhibit_fd: None,
+        };
         (window, Task::none())
     }
 
     fn update(&mut self, message: Self::Message) -> cosmic::Task<cosmic::Action<Self::Message>> {
         match message {
             Message::ToggleCaffeine => {
-                let desired_state = !self.enabled;
-                if let Err(err) = do_caffeine(desired_state) {
-                    println!("Error toggling caffeine: {}", err);
+                if self.inhibit_fd.is_some() {
+                    // Drop the fd → releases the inhibit lock
+                    self.inhibit_fd = None;
                 } else {
-                    // Only update self.enabled if success
-                    self.enabled = desired_state;
+                    match acquire_inhibit() {
+                        Ok(fd) => self.inhibit_fd = Some(fd),
+                        Err(err) => eprintln!("Failed to acquire inhibit lock (is logind/elogind running?): {err}"),
+                    }
                 }
             }
         }
         Task::none()
     }
 
-    fn view(&self) -> Element<Self::Message> {
+    fn view(&self) -> Element<'_, Self::Message> {
+        let icon = if self.inhibit_fd.is_some() { ON } else { OFF };
         self.core
             .applet
-            .icon_button(if self.enabled { ON } else { OFF })
+            .icon_button(icon)
             .on_press_down(Message::ToggleCaffeine)
             .into()
     }

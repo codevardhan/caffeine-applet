@@ -18,3 +18,8 @@ features = ["fluent-system", "desktop-requester"]
 git = "https://github.com/pop-os/libcosmic"
 default-features = false
 features = ["applet", "tokio", "wayland"]
+
+[dependencies.zbus]
+version = "5"
+default-features = false
+features = ["blocking"]
