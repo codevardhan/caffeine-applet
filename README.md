@@ -1,13 +1,15 @@
 # Caffeine Applet for [COSMIC DE](https://system76.com/cosmic/)
 
-A simple COSMIC applet that prevents your system from going idle by creating a systemd-inhibit lock session. Perfect for keeping your machine awake on demand!
+A simple COSMIC applet that prevents your system from going idle using a logind D-Bus inhibit lock. Perfect for keeping your machine awake on demand!
 
 ## Features
 
-- Toggle Caffeine: Click the applet's icon to enable or disable an inhibit session.
-- Minimal: Only uses a tiny amount of memory and CPU.
-- Built with COSMIC: Integrates into your cosmic desktop or panel.
-
+- **Toggle Caffeine:** Click the applet icon to open a popup with a toggler to enable or disable idle/sleep inhibition.
+- **Lid Switch Prevention:** Optionally prevent sleep when closing the laptop lid.
+- **Crash-safe:** Uses a logind file descriptor lock — if the applet crashes or is killed, the inhibit is automatically released by the kernel.
+- **Distro-agnostic:** Works on any system running systemd-logind or elogind.
+- **Minimal:** No child processes, no PID files, no temp files. Just a single D-Bus call.
+- **Built with COSMIC:** Integrates into your COSMIC panel as a native applet.
 
 ## Installation
 
@@ -20,6 +22,27 @@ A [justfile](./justfile) is included by default for the [casey/just][just] comma
 - `just build-vendored` compiles with vendored dependencies from that tarball
 - `just check` runs clippy on the project to check for linter warnings
 - `just check-json` can be used by IDEs that support LSP
+
+### Flatpak (In Progress)
+
+<!-- ```sh
+flatpak install flathub com.github.codevardhan.caffeine-applet
+``` -->
+
+## Usage
+
+Once the applet is added to your panel:
+
+1. Click the coffee-cup icon to open the popup.
+2. Toggle **Caffeine** on to prevent your system from going idle or sleeping.
+3. Toggle **Prevent lid sleep** to also keep the system awake when closing the laptop lid.
+4. Click the icon again to dismiss the popup.
+
+A full coffee cup means caffeine is active; an empty cup means normal idle behavior.
+
+## How It Works
+
+The applet calls `org.freedesktop.login1.Manager.Inhibit` over D-Bus to acquire an inhibit lock. This returns a file descriptor — as long as it's held open, the system won't idle or sleep. Dropping the fd (toggling off, closing the applet, or a crash) releases the lock immediately.
 
 ## Translators
 
@@ -49,13 +72,6 @@ Developers should install [rustup][rustup] and configure their editor to use [ru
 [rust-analyzer]: https://rust-analyzer.github.io/
 [mold]: https://github.com/rui314/mold
 [sccache]: https://github.com/mozilla/sccache
-
-## Usage
-
-Once the applet is running:
-- Click the coffee-cup icon to toggle between awake (caffeine mode) and idle (normal).
-A PID file (/tmp/caffeine-id.txt) is maintained to track the systemd-inhibit session.
-- If the PID file already exists, it means a caffeine session is running (and you won’t be able to start a new one without stopping it first).
 
 ## Contributing
 
