@@ -1,2 +1,10 @@
 /target
 .vscode
+
+.venv
+*.py
+
+/target
+/.flatpak-builder
+/builddir
+/repo
