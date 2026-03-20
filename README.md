@@ -5,7 +5,7 @@ A simple COSMIC applet that prevents your system from going idle using a logind 
 ## Features
 
 - **Toggle Caffeine:** Click the applet icon to open a popup with a toggler to enable or disable idle/sleep inhibition.
-- **Lid Switch Prevention:** Optionally prevent sleep when closing the laptop lid.
+<!-- - **Lid Switch Prevention:** Optionally prevent sleep when closing the laptop lid. -->
 - **Crash-safe:** Uses a logind file descriptor lock — if the applet crashes or is killed, the inhibit is automatically released by the kernel.
 - **Distro-agnostic:** Works on any system running systemd-logind or elogind.
 - **Minimal:** No child processes, no PID files, no temp files. Just a single D-Bus call.
