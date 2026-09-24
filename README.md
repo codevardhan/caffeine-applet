@@ -1,12 +1,14 @@
 # Caffeine Applet for [COSMIC DE](https://system76.com/cosmic/)
 
-A third-party applet for the [COSMIC desktop](https://system76.com/cosmic/) that prevents your system from going idle. Not official COSMIC software and not endorsed by System76. Click the coffee icon to toggle an inhibit lock that blocks idle and sleep, keeping your screen on and your machine awake.
+A third-party applet for the [COSMIC desktop](https://system76.com/cosmic/) that prevents your system from going idle. Not official COSMIC software and not endorsed by System76. Left-click the coffee icon to toggle an inhibit lock that blocks idle and sleep, keeping your screen on and your machine awake. Right-click for a menu to inhibit for a set time.
 
 Uses the logind D-Bus `Inhibit` interface directly — no child processes, no PID files, crash-safe by design. Works on any system running systemd-logind or elogind.
 
 ## Features
 
-- **One-click toggle**: Click the panel icon to open a menu and pick how long to inhibit — 15 minutes, 30 minutes, 1 hour, or indefinitely.
+- **Left-click toggle**: Left-click the panel icon to switch the inhibit lock on or off indefinitely.
+- **Timed sessions**: Right-click for a menu to inhibit for 15 minutes, 30 minutes, 1 hour, or indefinitely.
+- **Status icon**: The panel icon reflects the current state, a steaming cup when active and an empty cup when idle.
 - **Auto-expiry**: Timed sessions release the inhibit lock on their own when time's up — no need to remember to turn it off.
 - **Crash-safe**: Uses a file descriptor–based inhibit lock. If the applet crashes, the OS automatically releases the lock.
 - **Minimal**: No background processes, no polling, near-zero resource usage.
