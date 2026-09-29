@@ -122,4 +122,4 @@ See [systemd's inhibitor documentation](https://systemd.io/INHIBITOR_LOCKS/).
 
 ## License
 
-[MPL-2.0](./LICENSE)
+[MIT](./LICENSE)

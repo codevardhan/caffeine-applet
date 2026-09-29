@@ -2,7 +2,7 @@
 name = "caffeine-applet"
 version = "0.1.0"
 edition = "2021"
-license = "MPL-2.0"
+license = "MIT"
 description = "A simple COSMIC applet that prevents your system from going idle by creating a systemd-inhibit lock session."
 repository = "https://github.com/codevardhan/caffeine-applet"
 
