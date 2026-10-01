@@ -3,9 +3,17 @@
   <id>com.github.codevardhan.caffeine-applet</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
+  <project_group>COSMIC</project_group>
+  <developer_name>Harshavardhan Manohar</developer_name>
+  <update_contact>harsha7vardhan@gmail.com</update_contact>
+
+  <url type="homepage">https://github.com/codevardhan/caffeine-applet</url>
+  <url type="bugtracker">https://github.com/codevardhan/caffeine-applet/issues</url>
+  <url type="help">https://github.com/codevardhan/caffeine-applet#readme</url>
+  <url type="contact">mailto:harsha7vardhan@gmail.com</url>
+
   <name>Caffeine Applet</name>
   <summary>Keep your system awake on demand</summary>
-
   <description>
     <p>
       A simple COSMIC panel applet that prevents your system from going idle.
@@ -38,6 +46,35 @@
     <category>COSMIC</category>
   </categories>
 
+  <screenshots>
+    <screenshot type="default">
+      <image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_on.png</image>
+      <caption>Caffeine Applet active in the COSMIC panel</caption>
+    </screenshot>
+
+        <screenshot type="default">
+      <image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_off.png</image>
+      <caption>Caffeine Applet inactive in the COSMIC panel</caption>
+    </screenshot>
+
+    <screenshot type="default">
+      <image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_dark.png</image>
+      <caption>Caffeine Applet on the COSMIC panel, dark theme</caption>
+    </screenshot>
+
+    <screenshot type="default">
+      <image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_light.png</image>
+      <caption>Caffeine Applet on the COSMIC panel, light them</caption>
+    </screenshot>
+  </screenshots>
+
+  <content_rating type="oars-1.1" />
+
+
   <releases>
     <release version="0.1.2" date="2026-09-28">
       <description>
@@ -55,14 +92,4 @@
       </description>
     </release>
   </releases>
-
-  <screenshots>
-    <screenshot type="default">
-      <image>
-        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_on.png</image>
-      <caption>Caffeine Applet active in the COSMIC panel</caption>
-    </screenshot>
-  </screenshots>
-
-  <content_rating type="oars-1.1" />
 </component>
