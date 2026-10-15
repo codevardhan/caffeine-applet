@@ -24,17 +24,17 @@ fn dummy_fd() -> OwnedFd {
 
 #[test]
 fn label_minutes15() {
-    assert_eq!(CaffeineDuration::Minutes15.label(), "15 minutes");
+    assert_eq!(CaffeineDuration::Minutes(15).label(), "15 minutes");
 }
 
 #[test]
 fn label_minutes30() {
-    assert_eq!(CaffeineDuration::Minutes30.label(), "30 minutes");
+    assert_eq!(CaffeineDuration::Minutes(30).label(), "30 minutes");
 }
 
 #[test]
 fn label_hour1() {
-    assert_eq!(CaffeineDuration::Hour1.label(), "1 hour");
+    assert_eq!(CaffeineDuration::Minutes(60).label(), "1 hour");
 }
 
 #[test]
@@ -44,7 +44,11 @@ fn label_indefinite() {
 
 #[test]
 fn labels_are_unique() {
-    let mut labels: Vec<&str> = CaffeineDuration::ALL.iter().map(|c| c.label()).collect();
+    let mut labels: Vec<String> = CaffeineApplet::default()
+        .choices()
+        .iter()
+        .map(|c| c.label())
+        .collect();
     let original_len = labels.len();
     labels.sort_unstable();
     labels.dedup();
@@ -56,7 +60,7 @@ fn labels_are_unique() {
 #[test]
 fn duration_minutes15_is_15_minutes() {
     assert_eq!(
-        CaffeineDuration::Minutes15.duration(),
+        CaffeineDuration::Minutes(15).duration(),
         Some(Duration::from_secs(15 * 60))
     );
 }
@@ -64,7 +68,7 @@ fn duration_minutes15_is_15_minutes() {
 #[test]
 fn duration_minutes30_is_30_minutes() {
     assert_eq!(
-        CaffeineDuration::Minutes30.duration(),
+        CaffeineDuration::Minutes(30).duration(),
         Some(Duration::from_secs(30 * 60))
     );
 }
@@ -72,7 +76,7 @@ fn duration_minutes30_is_30_minutes() {
 #[test]
 fn duration_hour1_is_60_minutes() {
     assert_eq!(
-        CaffeineDuration::Hour1.duration(),
+        CaffeineDuration::Minutes(60).duration(),
         Some(Duration::from_secs(60 * 60))
     );
 }
@@ -84,7 +88,7 @@ fn duration_indefinite_is_none() {
 
 #[test]
 fn only_indefinite_has_no_duration() {
-    for choice in CaffeineDuration::ALL {
+    for choice in CaffeineApplet::default().choices() {
         let has_duration = choice.duration().is_some();
         assert_eq!(
             has_duration,
@@ -96,18 +100,18 @@ fn only_indefinite_has_no_duration() {
 
 #[test]
 fn timed_durations_increase_with_choice_order() {
-    let m15 = CaffeineDuration::Minutes15.duration().unwrap();
-    let m30 = CaffeineDuration::Minutes30.duration().unwrap();
-    let h1 = CaffeineDuration::Hour1.duration().unwrap();
+    let m15 = CaffeineDuration::Minutes(15).duration().unwrap();
+    let m30 = CaffeineDuration::Minutes(30).duration().unwrap();
+    let h1 = CaffeineDuration::Minutes(60).duration().unwrap();
     assert!(m15 < m30, "15 minutes should be shorter than 30 minutes");
     assert!(m30 < h1, "30 minutes should be shorter than 1 hour");
 }
 
-//  CaffeineDuration::ALL ─
+//  CaffeineApplet::default().choices() ─
 
 #[test]
 fn all_contains_four_unique_variants() {
-    let all = CaffeineDuration::ALL;
+    let all = CaffeineApplet::default().choices();
     assert_eq!(all.len(), 4);
     for (i, a) in all.iter().enumerate() {
         for (j, b) in all.iter().enumerate() {
@@ -120,10 +124,10 @@ fn all_contains_four_unique_variants() {
 
 #[test]
 fn all_contains_every_expected_variant() {
-    let all = CaffeineDuration::ALL;
-    assert!(all.contains(&CaffeineDuration::Minutes15));
-    assert!(all.contains(&CaffeineDuration::Minutes30));
-    assert!(all.contains(&CaffeineDuration::Hour1));
+    let all = CaffeineApplet::default().choices();
+    assert!(all.contains(&CaffeineDuration::Minutes(15)));
+    assert!(all.contains(&CaffeineDuration::Minutes(30)));
+    assert!(all.contains(&CaffeineDuration::Minutes(60)));
     assert!(all.contains(&CaffeineDuration::Indefinite));
 }
 
@@ -179,7 +183,7 @@ fn popup_closed_on_already_closed_popup_is_noop() {
 fn disable_clears_active_session() {
     let mut app = CaffeineApplet::default();
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Hour1);
+    app.active_choice = Some(CaffeineDuration::Minutes(60));
     app.deadline = Some(Instant::now() + Duration::from_secs(60));
 
     cosmic::Application::update(&mut app, Message::Disable);
@@ -217,16 +221,16 @@ fn disable_when_already_inactive_is_noop() {
 fn enable_when_already_active_updates_choice_without_reacquiring() {
     let mut app = CaffeineApplet::default();
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.active_choice = Some(CaffeineDuration::Minutes(15));
     app.deadline = Some(Instant::now() + Duration::from_secs(15 * 60));
 
-    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Hour1));
+    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes(60)));
 
     assert!(
         app.inhibit_fd.is_some(),
         "existing fd should be kept, not dropped"
     );
-    assert_eq!(app.active_choice, Some(CaffeineDuration::Hour1));
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(60)));
     assert!(app.deadline.is_some());
 }
 
@@ -234,7 +238,7 @@ fn enable_when_already_active_updates_choice_without_reacquiring() {
 fn enable_indefinite_when_already_active_clears_deadline() {
     let mut app = CaffeineApplet::default();
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.active_choice = Some(CaffeineDuration::Minutes(15));
     app.deadline = Some(Instant::now() + Duration::from_secs(15 * 60));
 
     cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Indefinite));
@@ -249,7 +253,7 @@ fn enable_closes_popup_when_already_active() {
     app.inhibit_fd = Some(dummy_fd());
     app.popup = Some(Id::unique());
 
-    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes30));
+    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes(30)));
 
     assert!(app.popup.is_none());
 }
@@ -260,13 +264,13 @@ fn enable_closes_popup_when_already_active() {
 fn tick_before_deadline_leaves_session_active() {
     let mut app = CaffeineApplet::default();
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.active_choice = Some(CaffeineDuration::Minutes(15));
     app.deadline = Some(Instant::now() + Duration::from_secs(60));
 
     cosmic::Application::update(&mut app, Message::Tick);
 
     assert!(app.inhibit_fd.is_some());
-    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes15));
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(15)));
     assert!(app.deadline.is_some());
 }
 
@@ -274,7 +278,7 @@ fn tick_before_deadline_leaves_session_active() {
 fn tick_after_deadline_clears_session() {
     let mut app = CaffeineApplet::default();
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.active_choice = Some(CaffeineDuration::Minutes(15));
     // Deadline already in the past.
     app.deadline = Some(Instant::now() - Duration::from_secs(1));
 
@@ -304,7 +308,9 @@ fn message_variants_are_debug_printable() {
     // for the variants that are trivial to construct in a unit test.
     assert_eq!(format!("{:?}", Message::Disable), "Disable");
     assert_eq!(format!("{:?}", Message::Tick), "Tick");
-    assert!(format!("{:?}", Message::Enable(CaffeineDuration::Hour1)).contains("Hour1"));
+    assert!(
+        format!("{:?}", Message::Enable(CaffeineDuration::Minutes(60))).contains("Minutes(60)")
+    );
 }
 
 //  acquire_inhibit (logind required) ─
@@ -332,10 +338,10 @@ fn inhibit_fd_is_open_while_held_and_released_on_drop() {
 fn enable_from_scratch_acquires_inhibit_and_sets_deadline() {
     let mut app = CaffeineApplet::default();
 
-    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes15));
+    cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes(15)));
 
     assert!(app.inhibit_fd.is_some());
-    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes15));
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(15)));
     assert!(app.deadline.is_some());
 }
 
@@ -346,7 +352,7 @@ fn disabling_lid_mode_releases_its_fd_without_changing_timer() {
     let mut app = CaffeineApplet::default();
     app.lid_inhibit_fd = Some(dummy_fd());
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes30);
+    app.active_choice = Some(CaffeineDuration::Minutes(30));
     let deadline = Instant::now() + Duration::from_secs(60);
     app.deadline = Some(deadline);
 
@@ -354,7 +360,7 @@ fn disabling_lid_mode_releases_its_fd_without_changing_timer() {
 
     assert!(app.lid_inhibit_fd.is_none());
     assert!(app.inhibit_fd.is_some());
-    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes30));
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(30)));
     assert_eq!(app.deadline, Some(deadline));
 }
 
@@ -363,7 +369,7 @@ fn timer_expiry_does_not_release_lid_inhibitor() {
     let mut app = CaffeineApplet::default();
     app.lid_inhibit_fd = Some(dummy_fd());
     app.inhibit_fd = Some(dummy_fd());
-    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.active_choice = Some(CaffeineDuration::Minutes(15));
     app.deadline = Some(Instant::now() - Duration::from_secs(1));
 
     let _ = cosmic::Application::update(&mut app, Message::Tick);
@@ -428,11 +434,100 @@ fn lid_inhibitor_is_registered_and_released_on_drop() {
 }
 
 #[test]
+fn countdown_uses_deadline_and_rounds_up_without_drifting() {
+    let start = Instant::now();
+    let deadline = start + Duration::from_secs(90 * 60);
+    assert_eq!(countdown(deadline, start), "90 min");
+    assert_eq!(
+        countdown(deadline, start + Duration::from_secs(30 * 60 + 1)),
+        "60 min"
+    );
+    assert_eq!(
+        countdown(deadline, deadline - Duration::from_millis(1)),
+        "1 min"
+    );
+    assert_eq!(countdown(deadline, deadline), "0 min");
+    assert_eq!(
+        countdown(deadline, deadline + Duration::from_secs(1)),
+        "0 min"
+    );
+}
+
+#[test]
+fn selected_row_has_live_remaining_time_and_indefinite_has_no_countdown() {
+    let mut app = CaffeineApplet::default();
+    let now = Instant::now();
+    app.active_choice = Some(CaffeineDuration::Minutes(25));
+    app.deadline = Some(now + Duration::from_secs(20 * 60 + 5));
+    assert_eq!(
+        app.choice_label(CaffeineDuration::Minutes(25), now),
+        "25 minutes — 21 min left"
+    );
+    assert_eq!(
+        app.choice_label(CaffeineDuration::Minutes(15), now),
+        "15 minutes"
+    );
+    app.active_choice = Some(CaffeineDuration::Indefinite);
+    app.deadline = None;
+    assert_eq!(
+        app.choice_label(CaffeineDuration::Indefinite, now),
+        "Indefinitely — active"
+    );
+}
+
+#[test]
+fn reloading_presets_preserves_current_session_and_keeps_it_visible() {
+    let test = crate::config::tests::TestConfig::new();
+    Settings {
+        duration_minutes: vec![5, 90],
+        dangerous_enable_closed_lid_control: false,
+        ..Settings::default()
+    }
+    .save(&test.config)
+    .unwrap();
+    let mut app = CaffeineApplet::default();
+    app.config = Some(test.config.clone());
+    app.inhibit_fd = Some(dummy_fd());
+    app.active_choice = Some(CaffeineDuration::Minutes(25));
+    let deadline = Instant::now() + Duration::from_secs(60);
+    app.deadline = Some(deadline);
+    app.reload_settings();
+    assert_eq!(app.deadline, Some(deadline));
+    assert!(app.inhibit_fd.is_some());
+    assert_eq!(
+        app.choices(),
+        vec![
+            CaffeineDuration::Minutes(25),
+            CaffeineDuration::Minutes(5),
+            CaffeineDuration::Minutes(90),
+            CaffeineDuration::Indefinite
+        ]
+    );
+}
+
+#[test]
 fn disabled_feature_rejects_enable_messages_without_acquiring_an_inhibitor() {
     let mut app = CaffeineApplet::default();
     let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(true));
     assert!(app.lid_inhibit_fd.is_none());
     assert!(!app.settings.dangerous_enable_closed_lid_control);
+}
+
+#[test]
+fn invalid_config_reload_keeps_last_good_values_and_running_timer() {
+    let test = crate::config::tests::TestConfig::new();
+    std::fs::write(&test.path, "broken").unwrap();
+    let mut app = CaffeineApplet::default();
+    app.config = Some(test.config.clone());
+    app.settings.duration_minutes = vec![25, 90];
+    app.inhibit_fd = Some(dummy_fd());
+    let deadline = Instant::now() + Duration::from_secs(60);
+    app.deadline = Some(deadline);
+    app.reload_settings();
+    assert_eq!(app.settings.duration_minutes, vec![25, 90]);
+    assert_eq!(app.deadline, Some(deadline));
+    assert!(app.inhibit_fd.is_some());
+    assert!(app.config_error.is_some());
 }
 
 #[test]
@@ -464,4 +559,59 @@ fn feature_opt_in_never_auto_activates_and_opt_out_releases_the_inhibitor() {
     settings.save(&test.config).unwrap();
     app.reload_settings();
     assert!(app.lid_inhibit_fd.is_none());
+}
+
+#[test]
+fn large_configured_durations_do_not_overflow_minute_conversion() {
+    let choice = CaffeineDuration::Minutes(u32::MAX);
+    assert_eq!(
+        choice.duration().unwrap().as_secs(),
+        u64::from(u32::MAX) * 60
+    );
+    let mut app = CaffeineApplet::default();
+    app.inhibit_fd = Some(dummy_fd());
+    assert!(app.enable(choice));
+    assert!(app.deadline.unwrap() > Instant::now());
+}
+
+#[test]
+fn default_duration_is_indefinite_until_configured_and_need_not_be_a_preset() {
+    let mut app = CaffeineApplet::default();
+    assert_eq!(app.default_choice(), CaffeineDuration::Indefinite);
+    app.settings.default_duration_minutes = Some(25);
+    assert_eq!(app.default_choice(), CaffeineDuration::Minutes(25));
+    assert!(!app.settings.duration_minutes.contains(&25));
+}
+
+#[test]
+fn explicit_menu_selection_ignores_configured_default() {
+    let mut app = CaffeineApplet::default();
+    app.settings.default_duration_minutes = Some(45);
+    app.inhibit_fd = Some(dummy_fd());
+    let _ = cosmic::Application::update(&mut app, Message::Enable(CaffeineDuration::Minutes(15)));
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(15)));
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 on the system bus"]
+fn left_click_loads_configured_default_and_next_click_ends_session() {
+    let test = crate::config::tests::TestConfig::new();
+    let settings = Settings {
+        default_duration_minutes: Some(25),
+        ..Settings::default()
+    };
+    settings.save(&test.config).unwrap();
+    let mut app = CaffeineApplet::default();
+    app.config = Some(test.config.clone());
+    let before = Instant::now();
+    let _ = cosmic::Application::update(&mut app, Message::ToggleInhibit);
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(25)));
+    assert!(app.inhibit_fd.is_some());
+    let deadline = app.deadline.unwrap();
+    assert!(deadline >= before + Duration::from_secs(25 * 60));
+    assert!(deadline <= Instant::now() + Duration::from_secs(25 * 60));
+    assert!(app.choices().contains(&CaffeineDuration::Minutes(25)));
+    let _ = cosmic::Application::update(&mut app, Message::ToggleInhibit);
+    assert!(app.inhibit_fd.is_none());
+    assert!(app.deadline.is_none());
 }
