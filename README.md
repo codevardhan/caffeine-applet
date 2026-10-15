@@ -8,7 +8,7 @@ Uses the logind D-Bus `Inhibit` interface directly — no child processes, no PI
 
 - **Left-click toggle**: Left-click the panel icon to start the configured default idle/sleep session, or end the current session. The default is indefinite. The closed-lid switch is independent.
 - **Optional closed-lid control**: Opt in through the settings file to reveal a **Keep awake with lid closed** switch. It starts off on each launch and is independent of timed sessions. Acquisition errors appear in the popup.
-- **Timed sessions**: Right-click to select a duration or run indefinitely. The selected row shows a live countdown, for example **15 minutes — 13 min left**. Duration presets are configurable.
+- **Timed sessions**: Right-click to select a duration or run indefinitely. The selected row is highlighted and shows a live countdown, for example **15 minutes — 13 min left**. Duration presets are configurable.
 - **Status icon**: The panel icon reflects the current state, a steaming cup when active and an empty cup when idle.
 - **Auto-expiry**: Timed sessions release the inhibit lock on their own when time's up — no need to remember to turn it off.
 - **Crash-safe**: Uses a file descriptor–based inhibit lock. If the applet crashes, the OS automatically releases the lock.

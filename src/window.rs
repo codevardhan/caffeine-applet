@@ -396,8 +396,17 @@ impl CaffeineApplet {
         let now = Instant::now();
         for choice in self.choices() {
             let label = self.choice_label(choice, now);
-            list = list
-                .add(cosmic::applet::menu_button(text(label)).on_press(Message::Enable(choice)));
+            let selected = self.active_choice == Some(choice);
+            list = list.add(
+                cosmic::applet::menu_button(text(label))
+                    .class(if selected {
+                        cosmic::theme::Button::ListItem
+                    } else {
+                        cosmic::theme::Button::AppletMenu
+                    })
+                    .selected(selected)
+                    .on_press(Message::Enable(choice)),
+            );
         }
 
         if self.inhibit_fd.is_some() {
