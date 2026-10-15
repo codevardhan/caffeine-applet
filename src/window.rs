@@ -1,9 +1,8 @@
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
 
-use crate::config::Settings;
+use crate::config::{Settings, SettingsStore};
 use cosmic::app::Core;
-use cosmic::cosmic_config::Config;
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
 use cosmic::surface::action::{app_popup, destroy_popup};
@@ -53,7 +52,7 @@ fn countdown(deadline: Instant, now: Instant) -> String {
 #[derive(Default)]
 pub struct CaffeineApplet {
     core: Core,
-    config: Option<Config>,
+    config: Option<SettingsStore>,
     settings: Settings,
     config_error: Option<String>,
     popup: Option<Id>,
@@ -142,7 +141,7 @@ impl cosmic::Application for CaffeineApplet {
             core,
             ..Default::default()
         };
-        match Config::new(ID, 1) {
+        match SettingsStore::new(ID, 1) {
             Ok(config) => {
                 window.config = Some(config);
                 window.reload_settings();

@@ -85,7 +85,8 @@ Contributions are welcome! Feel free to open an issue or submit a pull request. 
 
 ## Settings
 
-On first launch the applet creates a RON settings file at:
+On first launch the applet creates a commented RON settings file from the
+[shipped template](resources/settings.ron) at:
 
 ```text
 ~/.config/cosmic/com.github.codevardhan.caffeine-applet/v1/settings
@@ -101,6 +102,10 @@ It respects `XDG_CONFIG_HOME`. For Flatpak, the file is normally under
     dangerous_enable_closed_lid_control: false,
 )
 ```
+
+The generated file explains units, valid values, examples, left-click behavior,
+the closed-lid opt-in, and when changes apply. Existing settings and comments
+are preserved; updates do not replace your file.
 
 Edit `duration_minutes` to choose your presets, for example `[10, 25, 50, 90]`.
 Use one to eight unique, positive whole-minute values, in the desired menu
