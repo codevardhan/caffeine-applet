@@ -5,7 +5,7 @@ use cosmic::app::Core;
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
 use cosmic::surface::action::{app_popup, destroy_popup};
-use cosmic::widget::{list_column, mouse_area, text};
+use cosmic::widget::{list_column, mouse_area, settings, text, toggler};
 use cosmic::Element;
 use zbus::blocking::Connection;
 use zbus::zvariant::OwnedFd as ZbusFd;
@@ -56,6 +56,8 @@ pub struct CaffeineApplet {
     core: Core,
     popup: Option<Id>,
     inhibit_fd: Option<OwnedFd>,
+    lid_inhibit_fd: Option<OwnedFd>,
+    lid_inhibit_error: Option<String>,
     active_choice: Option<CaffeineDuration>,
     deadline: Option<Instant>,
 }
@@ -67,6 +69,7 @@ pub enum Message {
     Enable(CaffeineDuration),
     Disable,
     ToggleInhibit,
+    ToggleLidInhibit(bool),
     Tick,
 }
 
@@ -84,6 +87,28 @@ fn acquire_inhibit() -> Result<OwnedFd, Box<dyn std::error::Error>> {
                 "idle:sleep",
                 "Caffeine Applet",
                 "Caffeine session active",
+                "block",
+            ),
+        )?
+        .body()
+        .deserialize()?;
+
+    Ok(reply.into())
+}
+
+/// Prevent logind from suspending the system or reacting to a lid close.
+fn acquire_lid_inhibit() -> Result<OwnedFd, Box<dyn std::error::Error>> {
+    let conn = Connection::system()?;
+    let reply: ZbusFd = conn
+        .call_method(
+            Some("org.freedesktop.login1"),
+            "/org/freedesktop/login1",
+            Some("org.freedesktop.login1.Manager"),
+            "Inhibit",
+            &(
+                "sleep:handle-lid-switch",
+                "Caffeine Applet",
+                "Keep awake with lid closed",
                 "block",
             ),
         )?
@@ -183,6 +208,16 @@ impl cosmic::Application for CaffeineApplet {
                     self.enable(CaffeineDuration::Indefinite);
                 }
             }
+            Message::ToggleLidInhibit(enabled) => {
+                if enabled {
+                    if self.lid_inhibit_fd.is_none() {
+                        self.finish_lid_inhibit(acquire_lid_inhibit());
+                    }
+                } else {
+                    self.lid_inhibit_fd = None;
+                    self.lid_inhibit_error = None;
+                }
+            }
             Message::Tick => {
                 if let Some(deadline) = self.deadline {
                     if Instant::now() >= deadline {
@@ -205,7 +240,11 @@ impl cosmic::Application for CaffeineApplet {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let icon = if self.inhibit_fd.is_some() { ON } else { OFF };
+        let icon = if self.inhibit_fd.is_some() || self.lid_inhibit_fd.is_some() {
+            ON
+        } else {
+            OFF
+        };
         let suggested = self.core.applet.suggested_size(true);
         let padding = self.core.applet.suggested_padding(true);
 
@@ -248,6 +287,20 @@ impl cosmic::Application for CaffeineApplet {
 }
 
 impl CaffeineApplet {
+    fn finish_lid_inhibit(&mut self, result: Result<OwnedFd, Box<dyn std::error::Error>>) {
+        match result {
+            Ok(fd) => {
+                self.lid_inhibit_fd = Some(fd);
+                self.lid_inhibit_error = None;
+            }
+            Err(err) => {
+                let error = err.to_string();
+                eprintln!("Failed to keep the system awake with lid closed: {error}");
+                self.lid_inhibit_error = Some(error);
+            }
+        }
+    }
+
     /// Acquire the inhibit lock (if not already held) and set the session.
     /// Returns `false` if the lock could not be acquired.
     fn enable(&mut self, choice: CaffeineDuration) -> bool {
@@ -286,8 +339,20 @@ impl CaffeineApplet {
         }
 
         if self.inhibit_fd.is_some() {
-            list =
-                list.add(cosmic::applet::menu_button(text("Turn off")).on_press(Message::Disable));
+            list = list.add(
+                cosmic::applet::menu_button(text("End Caffeine session"))
+                    .on_press(Message::Disable),
+            );
+        }
+
+        list = list.add(settings::item(
+            "Keep awake with lid closed",
+            cosmic::widget::container(
+                toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
+            ),
+        ));
+        if let Some(error) = &self.lid_inhibit_error {
+            list = list.add(text(format!("Could not enable closed-lid mode: {error}")));
         }
 
         list.into()

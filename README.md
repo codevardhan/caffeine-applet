@@ -6,7 +6,8 @@ Uses the logind D-Bus `Inhibit` interface directly — no child processes, no PI
 
 ## Features
 
-- **Left-click toggle**: Left-click the panel icon to switch the inhibit lock on or off indefinitely.
+- **Left-click toggle**: Left-click the panel icon to switch the ordinary idle/sleep session on or off indefinitely. The closed-lid switch is independent.
+- **Closed-lid control**: Right-click and enable **Keep awake with lid closed** to block sleep and logind lid handling until switched off. This is independent of the timed sessions and resets when the applet exits. Acquisition errors are shown in the popup.
 - **Timed sessions**: Right-click for a menu to inhibit for 15 minutes, 30 minutes, 1 hour, or indefinitely.
 - **Status icon**: The panel icon reflects the current state, a steaming cup when active and an empty cup when idle.
 - **Auto-expiry**: Timed sessions release the inhibit lock on their own when time's up — no need to remember to turn it off.
@@ -81,6 +82,21 @@ just rootdir=debian/caffeine-applet prefix=/usr install
 ## Contributing
 
 Contributions are welcome! Feel free to open an issue or submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+
+## Closed-lid behavior
+
+The closed-lid switch uses the same `org.freedesktop.login1.Manager.Inhibit`
+interface as ordinary Caffeine sessions, with `sleep:handle-lid-switch` in block
+mode. The low-level lid inhibitor matters because logind ignores ordinary
+sleep inhibitors for lid events by default. This works with systemd-logind or
+elogind; no distro configuration or root access is required for an authorized
+active desktop session. The service's authorization policy still applies.
+Other power managers that handle lid events themselves may require their own
+configuration. The switch reports whether its inhibitor was acquired; it does
+not certify hardware suspend behavior. The display is still allowed to blank
+when only this switch is enabled.
+
+See [systemd's inhibitor documentation](https://systemd.io/INHIBITOR_LOCKS/).
 
 ## License
 
