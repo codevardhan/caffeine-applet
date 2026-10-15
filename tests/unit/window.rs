@@ -9,6 +9,7 @@
 
 use super::*;
 use std::fs::File;
+static LID_INHIBIT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// A stand-in inhibit fd that doesn't touch D-Bus/logind at all.
 /// Lets us test `update()` state transitions for an "already active"
@@ -390,6 +391,7 @@ fn failed_lid_request_stays_off_and_successful_retry_clears_error() {
 #[test]
 #[ignore = "requires org.freedesktop.login1 on the system bus"]
 fn lid_inhibitor_is_registered_and_released_on_drop() {
+    let _guard = LID_INHIBIT_TEST_LOCK.lock().unwrap();
     fn registered() -> bool {
         let conn = Connection::system().expect("system bus");
         let reply = conn
@@ -423,4 +425,43 @@ fn lid_inhibitor_is_registered_and_released_on_drop() {
         std::thread::sleep(Duration::from_millis(10));
     }
     panic!("inhibitor remained registered after its fd was dropped");
+}
+
+#[test]
+fn disabled_feature_rejects_enable_messages_without_acquiring_an_inhibitor() {
+    let mut app = CaffeineApplet::default();
+    let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(true));
+    assert!(app.lid_inhibit_fd.is_none());
+    assert!(!app.settings.dangerous_enable_closed_lid_control);
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 on the system bus"]
+fn feature_opt_in_never_auto_activates_and_opt_out_releases_the_inhibitor() {
+    let _guard = LID_INHIBIT_TEST_LOCK.lock().unwrap();
+    let test = crate::config::tests::TestConfig::new();
+    let mut settings = Settings {
+        dangerous_enable_closed_lid_control: true,
+        ..Settings::default()
+    };
+    settings.save(&test.config).unwrap();
+    let mut app = CaffeineApplet::default();
+    app.config = Some(test.config.clone());
+    app.reload_settings();
+    assert!(app.settings.dangerous_enable_closed_lid_control);
+    assert!(
+        app.lid_inhibit_fd.is_none(),
+        "opting in only reveals the control"
+    );
+    let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(true));
+    assert!(app.lid_inhibit_fd.is_some());
+    assert_eq!(
+        Settings::load(&test.config).unwrap(),
+        settings,
+        "session switch must not persist activation"
+    );
+    settings.dangerous_enable_closed_lid_control = false;
+    settings.save(&test.config).unwrap();
+    app.reload_settings();
+    assert!(app.lid_inhibit_fd.is_none());
 }

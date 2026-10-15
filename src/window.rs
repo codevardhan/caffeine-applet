@@ -1,7 +1,9 @@
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
 
+use crate::config::Settings;
 use cosmic::app::Core;
+use cosmic::cosmic_config::Config;
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
 use cosmic::surface::action::{app_popup, destroy_popup};
@@ -54,6 +56,9 @@ impl CaffeineDuration {
 #[derive(Default)]
 pub struct CaffeineApplet {
     core: Core,
+    config: Option<Config>,
+    settings: Settings,
+    config_error: Option<String>,
     popup: Option<Id>,
     inhibit_fd: Option<OwnedFd>,
     lid_inhibit_fd: Option<OwnedFd>,
@@ -136,10 +141,17 @@ impl cosmic::Application for CaffeineApplet {
         core: Core,
         _flags: Self::Flags,
     ) -> (Self, cosmic::Task<cosmic::Action<Self::Message>>) {
-        let window = CaffeineApplet {
+        let mut window = CaffeineApplet {
             core,
             ..Default::default()
         };
+        match Config::new(ID, 1) {
+            Ok(config) => {
+                window.config = Some(config);
+                window.reload_settings();
+            }
+            Err(err) => window.config_error = Some(format!("Could not open settings: {err}")),
+        }
         (window, Task::none())
     }
 
@@ -155,6 +167,9 @@ impl cosmic::Application for CaffeineApplet {
                 }
             }
             Message::TogglePopup => {
+                if self.popup.is_none() {
+                    self.reload_settings();
+                }
                 return if let Some(id) = self.popup.take() {
                     cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(
                         destroy_popup(id),
@@ -210,7 +225,9 @@ impl cosmic::Application for CaffeineApplet {
             }
             Message::ToggleLidInhibit(enabled) => {
                 if enabled {
-                    if self.lid_inhibit_fd.is_none() {
+                    if self.settings.dangerous_enable_closed_lid_control
+                        && self.lid_inhibit_fd.is_none()
+                    {
                         self.finish_lid_inhibit(acquire_lid_inhibit());
                     }
                 } else {
@@ -287,6 +304,21 @@ impl cosmic::Application for CaffeineApplet {
 }
 
 impl CaffeineApplet {
+    fn reload_settings(&mut self) {
+        let Some(config) = &self.config else { return };
+        match Settings::load(config) {
+            Ok(settings) => {
+                if !settings.dangerous_enable_closed_lid_control {
+                    self.lid_inhibit_fd = None;
+                    self.lid_inhibit_error = None;
+                }
+                self.settings = settings;
+                self.config_error = None;
+            }
+            Err(err) => self.config_error = Some(format!("Could not load settings: {err}. Check the settings file; existing values are still in use.")),
+        }
+    }
+
     fn finish_lid_inhibit(&mut self, result: Result<OwnedFd, Box<dyn std::error::Error>>) {
         match result {
             Ok(fd) => {
@@ -345,16 +377,20 @@ impl CaffeineApplet {
             );
         }
 
-        list = list.add(settings::item(
-            "Keep awake with lid closed",
-            cosmic::widget::container(
-                toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
-            ),
-        ));
-        if let Some(error) = &self.lid_inhibit_error {
-            list = list.add(text(format!("Could not enable closed-lid mode: {error}")));
+        if self.settings.dangerous_enable_closed_lid_control {
+            list = list.add(settings::item(
+                "Keep awake with lid closed",
+                cosmic::widget::container(
+                    toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
+                ),
+            ));
+            if let Some(error) = &self.lid_inhibit_error {
+                list = list.add(text(format!("Could not enable closed-lid mode: {error}")));
+            }
         }
-
+        if let Some(error) = &self.config_error {
+            list = list.add(text(error));
+        }
         list.into()
     }
 }
