@@ -1,3 +1,4 @@
+mod config;
 mod window;
 mod i18n;
 

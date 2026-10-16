@@ -6,7 +6,8 @@ Uses the logind D-Bus `Inhibit` interface directly — no child processes, no PI
 
 ## Features
 
-- **Left-click toggle**: Left-click the panel icon to switch the inhibit lock on or off indefinitely.
+- **Left-click toggle**: Left-click the panel icon to switch the ordinary idle/sleep session on or off indefinitely. The closed-lid switch is independent.
+- **Optional closed-lid control**: Opt in through the settings file to reveal a **Keep awake with lid closed** switch. It starts off on each launch and is independent of timed sessions. Acquisition errors appear in the popup.
 - **Timed sessions**: Right-click for a menu to inhibit for 15 minutes, 30 minutes, 1 hour, or indefinitely.
 - **Status icon**: The panel icon reflects the current state, a steaming cup when active and an empty cup when idle.
 - **Auto-expiry**: Timed sessions release the inhibit lock on their own when time's up — no need to remember to turn it off.
@@ -81,6 +82,43 @@ just rootdir=debian/caffeine-applet prefix=/usr install
 ## Contributing
 
 Contributions are welcome! Feel free to open an issue or submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
+
+## Closed-lid settings
+
+On first launch the applet creates a RON settings file at:
+
+```text
+~/.config/cosmic/com.github.codevardhan.caffeine-applet/v1/settings
+```
+
+It respects `XDG_CONFIG_HOME`. For Flatpak, the file is normally under
+`~/.var/app/com.github.codevardhan.caffeine-applet/config/cosmic/com.github.codevardhan.caffeine-applet/v1/settings`.
+
+```ron
+(
+    dangerous_enable_closed_lid_control: false,
+)
+```
+
+`dangerous_enable_closed_lid_control` gates availability, not activation.
+It defaults to `false`, hiding the lid switch. Setting it to `true` reveals the
+switch but never starts an inhibitor automatically. Every applet launch starts
+it off; activation is not saved. Reopen the popup to reload settings. Setting
+the flag back to `false` releases an active lid inhibitor on the next reload.
+Invalid settings produce a popup error without overwriting the file, retaining
+last valid settings (or defaults at startup). Opt in deliberately for your
+hardware and cooling setup.
+
+When explicitly switched on, the control requests a separate
+`sleep:handle-lid-switch` block inhibitor through the existing login1 D-Bus
+interface. The low-level lid inhibitor matters because logind ignores ordinary
+sleep inhibitors for lid events by default. No distro or kernel detection is
+used; the service's authorization policy still applies. Other power managers
+that handle lid events themselves may require separate configuration. The
+switch reports inhibitor acquisition; physical lid behavior still needs to be
+verified. It does not keep the display on.
+
+See [systemd's inhibitor documentation](https://systemd.io/INHIBITOR_LOCKS/).
 
 ## License
 

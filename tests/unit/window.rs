@@ -9,6 +9,7 @@
 
 use super::*;
 use std::fs::File;
+static LID_INHIBIT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// A stand-in inhibit fd that doesn't touch D-Bus/logind at all.
 /// Lets us test `update()` state transitions for an "already active"
@@ -336,4 +337,131 @@ fn enable_from_scratch_acquires_inhibit_and_sets_deadline() {
     assert!(app.inhibit_fd.is_some());
     assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes15));
     assert!(app.deadline.is_some());
+}
+
+// Closed-lid mode is independent of ordinary Caffeine timers.
+
+#[test]
+fn disabling_lid_mode_releases_its_fd_without_changing_timer() {
+    let mut app = CaffeineApplet::default();
+    app.lid_inhibit_fd = Some(dummy_fd());
+    app.inhibit_fd = Some(dummy_fd());
+    app.active_choice = Some(CaffeineDuration::Minutes30);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    app.deadline = Some(deadline);
+
+    let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(false));
+
+    assert!(app.lid_inhibit_fd.is_none());
+    assert!(app.inhibit_fd.is_some());
+    assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes30));
+    assert_eq!(app.deadline, Some(deadline));
+}
+
+#[test]
+fn timer_expiry_does_not_release_lid_inhibitor() {
+    let mut app = CaffeineApplet::default();
+    app.lid_inhibit_fd = Some(dummy_fd());
+    app.inhibit_fd = Some(dummy_fd());
+    app.active_choice = Some(CaffeineDuration::Minutes15);
+    app.deadline = Some(Instant::now() - Duration::from_secs(1));
+
+    let _ = cosmic::Application::update(&mut app, Message::Tick);
+
+    assert!(app.inhibit_fd.is_none());
+    assert!(app.lid_inhibit_fd.is_some());
+}
+
+#[test]
+fn failed_lid_request_stays_off_and_successful_retry_clears_error() {
+    let mut app = CaffeineApplet::default();
+    app.finish_lid_inhibit(Err(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "Lid inhibition denied",
+    )
+    .into()));
+    assert!(app.lid_inhibit_fd.is_none());
+    assert!(app.lid_inhibit_error.as_deref().unwrap().contains("denied"));
+
+    app.finish_lid_inhibit(Ok(dummy_fd()));
+    assert!(app.lid_inhibit_fd.is_some());
+    assert!(app.lid_inhibit_error.is_none());
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 on the system bus"]
+fn lid_inhibitor_is_registered_and_released_on_drop() {
+    let _guard = LID_INHIBIT_TEST_LOCK.lock().unwrap();
+    fn registered() -> bool {
+        let conn = Connection::system().expect("system bus");
+        let reply = conn
+            .call_method(
+                Some("org.freedesktop.login1"),
+                "/org/freedesktop/login1",
+                Some("org.freedesktop.login1.Manager"),
+                "ListInhibitors",
+                &(),
+            )
+            .expect("ListInhibitors");
+        let rows: Vec<(String, String, String, String, u32, u32)> =
+            reply.body().deserialize().expect("inhibitor rows");
+        rows.iter().any(|(what, who, why, mode, _, pid)| {
+            what.split(':').any(|part| part == "handle-lid-switch")
+                && what.split(':').any(|part| part == "sleep")
+                && who == "Caffeine Applet"
+                && why == "Keep awake with lid closed"
+                && mode == "block"
+                && *pid == std::process::id()
+        })
+    }
+
+    let fd = acquire_lid_inhibit().expect("acquire lid inhibitor");
+    assert!(registered(), "must hold both sleep and lid-handling locks");
+    drop(fd);
+    for _ in 0..100 {
+        if !registered() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("inhibitor remained registered after its fd was dropped");
+}
+
+#[test]
+fn disabled_feature_rejects_enable_messages_without_acquiring_an_inhibitor() {
+    let mut app = CaffeineApplet::default();
+    let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(true));
+    assert!(app.lid_inhibit_fd.is_none());
+    assert!(!app.settings.dangerous_enable_closed_lid_control);
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 on the system bus"]
+fn feature_opt_in_never_auto_activates_and_opt_out_releases_the_inhibitor() {
+    let _guard = LID_INHIBIT_TEST_LOCK.lock().unwrap();
+    let test = crate::config::tests::TestConfig::new();
+    let mut settings = Settings {
+        dangerous_enable_closed_lid_control: true,
+        ..Settings::default()
+    };
+    settings.save(&test.config).unwrap();
+    let mut app = CaffeineApplet::default();
+    app.config = Some(test.config.clone());
+    app.reload_settings();
+    assert!(app.settings.dangerous_enable_closed_lid_control);
+    assert!(
+        app.lid_inhibit_fd.is_none(),
+        "opting in only reveals the control"
+    );
+    let _ = cosmic::Application::update(&mut app, Message::ToggleLidInhibit(true));
+    assert!(app.lid_inhibit_fd.is_some());
+    assert_eq!(
+        Settings::load(&test.config).unwrap(),
+        settings,
+        "session switch must not persist activation"
+    );
+    settings.dangerous_enable_closed_lid_control = false;
+    settings.save(&test.config).unwrap();
+    app.reload_settings();
+    assert!(app.lid_inhibit_fd.is_none());
 }
