@@ -86,6 +86,10 @@ install:
           install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}${suffix}"
           ;;
         # your coffee assets from Inkscape
+        # symbolic variant referenced by the desktop entry's Icon= key
+        coffee-symbolic.svg)
+          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}-symbolic.svg"
+          ;;
         coffee-full.svg|active.svg)
           # install as the default AND as an explicit variant
           install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.svg"
