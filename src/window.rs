@@ -1,9 +1,8 @@
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
 
-use crate::config::Settings;
+use crate::config::{Settings, SettingsStore};
 use cosmic::app::Core;
-use cosmic::cosmic_config::Config;
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
 use cosmic::surface::action::{app_popup, destroy_popup};
@@ -19,44 +18,41 @@ const OFF: &str = "com.github.codevardhan.caffeine-applet.Off";
 /// How long a caffeine session should stay active for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CaffeineDuration {
-    Minutes15,
-    Minutes30,
-    Hour1,
+    Minutes(u32),
     Indefinite,
 }
 
 impl CaffeineDuration {
-    const ALL: [CaffeineDuration; 4] = [
-        Self::Minutes15,
-        Self::Minutes30,
-        Self::Hour1,
-        Self::Indefinite,
-    ];
-
-    fn label(self) -> &'static str {
+    fn label(self) -> String {
         match self {
-            Self::Minutes15 => "15 minutes",
-            Self::Minutes30 => "30 minutes",
-            Self::Hour1 => "1 hour",
-            Self::Indefinite => "Indefinitely",
+            Self::Minutes(1) => "1 minute".into(),
+            Self::Minutes(60) => "1 hour".into(),
+            Self::Minutes(minutes) if minutes % 60 == 0 => format!("{} hours", minutes / 60),
+            Self::Minutes(minutes) => format!("{minutes} minutes"),
+            Self::Indefinite => "Indefinitely".into(),
         }
     }
 
-    /// `None` means the session never expires on its own.
     fn duration(self) -> Option<Duration> {
         match self {
-            Self::Minutes15 => Some(Duration::from_secs(15 * 60)),
-            Self::Minutes30 => Some(Duration::from_secs(30 * 60)),
-            Self::Hour1 => Some(Duration::from_secs(60 * 60)),
+            Self::Minutes(minutes) => Some(Duration::from_secs(u64::from(minutes) * 60)),
             Self::Indefinite => None,
         }
     }
 }
 
+/// Round up partial minutes so an active timer never reads zero early.
+fn countdown(deadline: Instant, now: Instant) -> String {
+    let remaining = deadline.saturating_duration_since(now);
+    let seconds = remaining.as_secs();
+    let minutes = seconds / 60 + u64::from(seconds % 60 != 0 || remaining.subsec_nanos() != 0);
+    format!("{minutes} min")
+}
+
 #[derive(Default)]
 pub struct CaffeineApplet {
     core: Core,
-    config: Option<Config>,
+    config: Option<SettingsStore>,
     settings: Settings,
     config_error: Option<String>,
     popup: Option<Id>,
@@ -145,7 +141,7 @@ impl cosmic::Application for CaffeineApplet {
             core,
             ..Default::default()
         };
-        match Config::new(ID, 1) {
+        match SettingsStore::new(ID, 1) {
             Ok(config) => {
                 window.config = Some(config);
                 window.reload_settings();
@@ -220,7 +216,8 @@ impl cosmic::Application for CaffeineApplet {
                 if self.inhibit_fd.is_some() {
                     self.disable();
                 } else {
-                    self.enable(CaffeineDuration::Indefinite);
+                    self.reload_settings();
+                    self.enable(self.default_choice());
                 }
             }
             Message::ToggleLidInhibit(enabled) => {
@@ -319,6 +316,41 @@ impl CaffeineApplet {
         }
     }
 
+    fn default_choice(&self) -> CaffeineDuration {
+        self.settings
+            .default_duration_minutes
+            .map(CaffeineDuration::Minutes)
+            .unwrap_or(CaffeineDuration::Indefinite)
+    }
+
+    fn choices(&self) -> Vec<CaffeineDuration> {
+        let mut choices: Vec<_> = self
+            .settings
+            .duration_minutes
+            .iter()
+            .copied()
+            .map(CaffeineDuration::Minutes)
+            .collect();
+        // Editing presets must not hide a session that is already running.
+        if let Some(choice @ CaffeineDuration::Minutes(_)) = self.active_choice {
+            if !choices.contains(&choice) {
+                choices.insert(0, choice);
+            }
+        }
+        choices.push(CaffeineDuration::Indefinite);
+        choices
+    }
+
+    fn choice_label(&self, choice: CaffeineDuration, now: Instant) -> String {
+        if self.active_choice != Some(choice) {
+            return choice.label();
+        }
+        match self.deadline {
+            Some(deadline) => format!("{} — {} left", choice.label(), countdown(deadline, now)),
+            None => format!("{} — active", choice.label()),
+        }
+    }
+
     fn finish_lid_inhibit(&mut self, result: Result<OwnedFd, Box<dyn std::error::Error>>) {
         match result {
             Ok(fd) => {
@@ -360,14 +392,20 @@ impl CaffeineApplet {
     fn menu_content(&self) -> Element<'_, Message> {
         let mut list = list_column().padding(5).spacing(4);
 
-        for choice in CaffeineDuration::ALL {
-            let label = if self.active_choice == Some(choice) {
-                format!("✓  {}", choice.label())
-            } else {
-                choice.label().to_string()
-            };
-            list = list
-                .add(cosmic::applet::menu_button(text(label)).on_press(Message::Enable(choice)));
+        let now = Instant::now();
+        for choice in self.choices() {
+            let label = self.choice_label(choice, now);
+            let selected = self.active_choice == Some(choice);
+            list = list.add(
+                cosmic::applet::menu_button(text(label))
+                    .class(if selected {
+                        cosmic::theme::Button::ListItem
+                    } else {
+                        cosmic::theme::Button::AppletMenu
+                    })
+                    .selected(selected)
+                    .on_press(Message::Enable(choice)),
+            );
         }
 
         if self.inhibit_fd.is_some() {

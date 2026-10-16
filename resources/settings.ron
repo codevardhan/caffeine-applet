@@ -1,0 +1,32 @@
+// Caffeine applet settings (RON format). Lines starting with // are comments.
+// Left-click the panel cup to start/end a session; right-click for durations.
+// Save this file, then close and reopen the Caffeine popup to apply changes.
+// Settings also reload before left-click starts a session. A running timer
+// keeps its original deadline, even if you change or remove its preset.
+// Invalid settings are reported in the popup; the last valid values remain in
+// use, or defaults at startup. Fix the file and reopen the popup to retry.
+(
+    // Durations shown in the popup, in minutes and in this order.
+    // Use 1 to 8 unique positive whole numbers. Examples: [10, 25, 50, 90]
+    // or [30, 60, 240] for 30 minutes, 1 hour and 4 hours.
+    // "Indefinitely" is always added automatically; do not put it in this list.
+    duration_minutes: [15, 30, 60],
+
+    // What left-click starts when Caffeine is off:
+    //   None     = stay awake indefinitely (the default).
+    //   Some(30) = start a 30-minute session; use any positive whole minutes.
+    // This value need not appear in duration_minutes. Choosing a popup item
+    // always uses that item's duration. Left-click again ends the session.
+    default_duration_minutes: None,
+
+    // DANGEROUS: opt in to staying awake with the laptop lid closed.
+    // Consider your hardware, workload and cooling before enabling this feature.
+    //   false = hide the closed-lid switch (the default).
+    //   true  = reveal "Keep awake with lid closed" in the popup.
+    // This flag NEVER activates stay-awake mode by itself. The revealed switch
+    // starts off on every applet launch and must be enabled manually each time.
+    // Setting this flag back to false releases any active lid inhibitor when
+    // settings reload. While switched on, lid mode blocks sleep even after a
+    // timer ends; turn it off when done. It does not keep the display on.
+    dangerous_enable_closed_lid_control: false,
+)

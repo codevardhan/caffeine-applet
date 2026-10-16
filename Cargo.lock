@@ -683,11 +683,13 @@ checksum = "d71b6127be86fdcfddb610f7182ac57211d4b18a3e9c82eb2d17662f2227ad6a"
 name = "caffeine-applet"
 version = "0.1.0"
 dependencies = [
+ "dirs 6.0.0",
  "i18n-embed 0.15.4",
  "i18n-embed-fl 0.9.4",
  "libcosmic",
  "rust-embed",
  "serde",
+ "tempfile",
  "zbus 5.12.0",
 ]
 

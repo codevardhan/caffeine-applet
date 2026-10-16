@@ -6,9 +6,9 @@ Uses the logind D-Bus `Inhibit` interface directly — no child processes, no PI
 
 ## Features
 
-- **Left-click toggle**: Left-click the panel icon to switch the ordinary idle/sleep session on or off indefinitely. The closed-lid switch is independent.
+- **Left-click toggle**: Left-click the panel icon to start the configured default idle/sleep session, or end the current session. The default is indefinite. The closed-lid switch is independent.
 - **Optional closed-lid control**: Opt in through the settings file to reveal a **Keep awake with lid closed** switch. It starts off on each launch and is independent of timed sessions. Acquisition errors appear in the popup.
-- **Timed sessions**: Right-click for a menu to inhibit for 15 minutes, 30 minutes, 1 hour, or indefinitely.
+- **Timed sessions**: Right-click to select a duration or run indefinitely. The selected row is highlighted and shows a live countdown, for example **15 minutes — 13 min left**. Duration presets are configurable.
 - **Status icon**: The panel icon reflects the current state, a steaming cup when active and an empty cup when idle.
 - **Auto-expiry**: Timed sessions release the inhibit lock on their own when time's up — no need to remember to turn it off.
 - **Crash-safe**: Uses a file descriptor–based inhibit lock. If the applet crashes, the OS automatically releases the lock.
@@ -83,9 +83,10 @@ just rootdir=debian/caffeine-applet prefix=/usr install
 
 Contributions are welcome! Feel free to open an issue or submit a pull request. For major changes, please open an issue first to discuss what you would like to change.
 
-## Closed-lid settings
+## Settings
 
-On first launch the applet creates a RON settings file at:
+On first launch the applet creates a commented RON settings file from the
+[shipped template](resources/settings.ron) at:
 
 ```text
 ~/.config/cosmic/com.github.codevardhan.caffeine-applet/v1/settings
@@ -96,27 +97,49 @@ It respects `XDG_CONFIG_HOME`. For Flatpak, the file is normally under
 
 ```ron
 (
+    duration_minutes: [15, 30, 60],
+    default_duration_minutes: None,
     dangerous_enable_closed_lid_control: false,
 )
 ```
 
+The generated file explains units, valid values, examples, left-click behavior,
+the closed-lid opt-in, and when changes apply. Existing settings and comments
+are preserved; updates do not replace your file.
+
+Edit `duration_minutes` to choose your presets, for example `[10, 25, 50, 90]`.
+Use one to eight unique, positive whole-minute values, in the desired menu
+order. **Indefinitely** is always available. Reopen the popup to reload file
+changes; existing timers continue with their original deadline. If you remove
+a running duration from the presets, its countdown stays visible until that
+session ends. Invalid files produce a popup error and keep the last valid
+settings (or defaults at startup); the applet does not overwrite them.
+
+`default_duration_minutes` selects the session started by left-clicking the
+panel icon. `None` preserves indefinite sessions; `Some(25)` starts a 25-minute
+session. Use positive whole minutes. It may be a duration outside the preset
+list; its active countdown will still appear. Explicit menu choices always
+use the duration you select. Settings are also reloaded before starting a
+session with left-click.
+
 `dangerous_enable_closed_lid_control` gates availability, not activation.
 It defaults to `false`, hiding the lid switch. Setting it to `true` reveals the
-switch but never starts an inhibitor automatically. Every applet launch starts
-it off; activation is not saved. Reopen the popup to reload settings. Setting
-the flag back to `false` releases an active lid inhibitor on the next reload.
-Invalid settings produce a popup error without overwriting the file, retaining
-last valid settings (or defaults at startup). Opt in deliberately for your
-hardware and cooling setup.
+switch but never starts a lid inhibitor automatically. The switch is a session
+control and is not saved; every applet launch starts it off. Setting the config
+flag back to `false` releases any active lid inhibitor on the next settings
+reload. Opt in deliberately for your hardware and cooling setup.
 
-When explicitly switched on, the control requests a separate
-`sleep:handle-lid-switch` block inhibitor through the existing login1 D-Bus
-interface. The low-level lid inhibitor matters because logind ignores ordinary
-sleep inhibitors for lid events by default. No distro or kernel detection is
-used; the service's authorization policy still applies. Other power managers
-that handle lid events themselves may require separate configuration. The
-switch reports inhibitor acquisition; physical lid behavior still needs to be
-verified. It does not keep the display on.
+## Closed-lid behavior
+
+When the optional switch is on, it uses the same
+`org.freedesktop.login1.Manager.Inhibit` interface as ordinary Caffeine
+sessions, with `sleep:handle-lid-switch` in block mode. The low-level lid
+inhibitor matters because logind ignores ordinary sleep inhibitors for lid
+events by default. This works with systemd-logind or elogind; the service's
+authorization policy still applies. Other power managers that handle lid
+events themselves may require their own configuration. The switch reports
+whether its inhibitor was acquired; hardware suspend behavior still needs to
+be verified. The display may still blank when only this switch is enabled.
 
 See [systemd's inhibitor documentation](https://systemd.io/INHIBITOR_LOCKS/).
 
