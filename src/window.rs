@@ -3,10 +3,10 @@ use std::time::{Duration, Instant};
 
 use crate::config::{Settings, SettingsStore};
 use cosmic::app::Core;
+use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
-use cosmic::surface::action::{app_popup, destroy_popup};
-use cosmic::widget::{list_column, mouse_area, settings, text, toggler};
+use cosmic::widget::{mouse_area, settings, text, toggler, Column};
 use cosmic::Element;
 use zbus::blocking::Connection;
 use zbus::zvariant::OwnedFd as ZbusFd;
@@ -167,31 +167,17 @@ impl cosmic::Application for CaffeineApplet {
                     self.reload_settings();
                 }
                 return if let Some(id) = self.popup.take() {
-                    cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(
-                        destroy_popup(id),
-                    )))
+                    destroy_popup(id)
                 } else {
-                    cosmic::task::message(cosmic::Action::Cosmic(cosmic::app::Action::Surface(
-                        app_popup::<CaffeineApplet>(
-                            move |state: &mut CaffeineApplet| {
-                                let new_id = Id::unique();
-                                state.popup = Some(new_id);
-                                state.core.applet.get_popup_settings(
-                                    state.core.main_window_id().unwrap(),
-                                    new_id,
-                                    None,
-                                    None,
-                                    None,
-                                )
-                            },
-                            Some(Box::new(move |state: &CaffeineApplet| {
-                                Element::from(
-                                    state.core.applet.popup_container(state.menu_content()),
-                                )
-                                .map(cosmic::Action::App)
-                            })),
-                        ),
-                    )))
+                    let new_id = Id::unique();
+                    self.popup = Some(new_id);
+                    get_popup(self.core.applet.get_popup_settings(
+                        self.core.main_window_id().unwrap(),
+                        new_id,
+                        None,
+                        None,
+                        None,
+                    ))
                 };
             }
             Message::Enable(choice) => {
@@ -199,17 +185,13 @@ impl cosmic::Application for CaffeineApplet {
                     return Task::none();
                 }
                 if let Some(id) = self.popup.take() {
-                    return cosmic::task::message(cosmic::Action::Cosmic(
-                        cosmic::app::Action::Surface(destroy_popup(id)),
-                    ));
+                    return destroy_popup(id);
                 }
             }
             Message::Disable => {
                 self.disable();
                 if let Some(id) = self.popup.take() {
-                    return cosmic::task::message(cosmic::Action::Cosmic(
-                        cosmic::app::Action::Surface(destroy_popup(id)),
-                    ));
+                    return destroy_popup(id);
                 }
             }
             Message::ToggleInhibit => {
@@ -259,43 +241,24 @@ impl cosmic::Application for CaffeineApplet {
         } else {
             OFF
         };
-        let suggested = self.core.applet.suggested_size(true);
-        let padding = self.core.applet.suggested_padding(true);
-
-        // Same icon element the applet's own `icon_button` builds, so the panel
-        // renders it identically (symbolic recolor + suggested size).
-        let icon_el = cosmic::widget::icon(
-            cosmic::widget::icon::from_name(icon)
-                .symbolic(true)
-                .size(suggested.0)
-                .into(),
+        // `icon_button` gives us the exact same geometry, symbolic recolor and
+        // `Button::AppletIcon` styling the official applets use. The button only
+        // captures left-click, so right-click falls through to the `mouse_area`.
+        mouse_area(
+            self.core
+                .applet
+                .icon_button(icon)
+                .on_press(Message::ToggleInhibit),
         )
-        .class(cosmic::theme::Svg::Custom(std::rc::Rc::new(|theme| {
-            cosmic::iced_widget::svg::Style {
-                color: Some(theme.cosmic().background.on.into()),
-            }
-        })))
-        .width(cosmic::iced::Length::Fixed(suggested.0 as f32))
-        .height(cosmic::iced::Length::Fixed(suggested.1 as f32));
-
-        cosmic::widget::button::custom(
-            cosmic::widget::layer_container(
-                mouse_area(icon_el).on_right_press(Message::TogglePopup),
-            )
-            .center(cosmic::iced::Length::Fill),
-        )
-        .width(cosmic::iced::Length::Fixed(
-            (suggested.0 + 2 * padding) as f32,
-        ))
-        .height(cosmic::iced::Length::Fixed(
-            (suggested.1 + 2 * padding) as f32,
-        ))
-        .class(cosmic::theme::Button::AppletIcon)
-        .on_press(Message::ToggleInhibit)
+        .on_right_press(Message::TogglePopup)
         .into()
     }
 
-    fn style(&self) -> Option<cosmic::iced_runtime::Appearance> {
+    fn view_window(&self, _id: Id) -> Element<'_, Self::Message> {
+        self.core.applet.popup_container(self.menu_content()).into()
+    }
+
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
         Some(cosmic::applet::style())
     }
 }
@@ -390,16 +353,21 @@ impl CaffeineApplet {
     }
 
     fn menu_content(&self) -> Element<'_, Message> {
-        let mut list = list_column().padding(5).spacing(4);
+        // `menu_button` already carries the COSMIC menu padding, so the column
+        // only needs the vertical inset the official applet popups use.
+        let mut list = Column::new().padding([8, 0]);
 
         let now = Instant::now();
         for choice in self.choices() {
             let label = self.choice_label(choice, now);
             let selected = self.active_choice == Some(choice);
-            list = list.add(
+            list = list.push(
                 cosmic::applet::menu_button(text(label))
+                    // `ListItem` now carries its own corner radii; `[0.0; 4]`
+                    // is what it hardcoded before, and matches `AppletMenu`'s
+                    // `radius_0` so the selected row keeps the same geometry.
                     .class(if selected {
-                        cosmic::theme::Button::ListItem
+                        cosmic::theme::Button::ListItem([0.0; 4])
                     } else {
                         cosmic::theme::Button::AppletMenu
                     })
@@ -409,25 +377,30 @@ impl CaffeineApplet {
         }
 
         if self.inhibit_fd.is_some() {
-            list = list.add(
+            list = list.push(
                 cosmic::applet::menu_button(text("End Caffeine session"))
                     .on_press(Message::Disable),
             );
         }
 
         if self.settings.dangerous_enable_closed_lid_control {
-            list = list.add(settings::item(
+            // Rows that aren't `menu_button`s need the horizontal inset that
+            // `list_column` used to supply; `padded_control` is what the
+            // official applets use for exactly this.
+            list = list.push(cosmic::applet::padded_control(settings::item(
                 "Keep awake with lid closed",
                 cosmic::widget::container(
                     toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
                 ),
-            ));
+            )));
             if let Some(error) = &self.lid_inhibit_error {
-                list = list.add(text(format!("Could not enable closed-lid mode: {error}")));
+                list = list.push(cosmic::applet::padded_control(text(format!(
+                    "Could not enable closed-lid mode: {error}"
+                ))));
             }
         }
         if let Some(error) = &self.config_error {
-            list = list.add(text(error));
+            list = list.push(cosmic::applet::padded_control(text(error)));
         }
         list.into()
     }
