@@ -1,12 +1,14 @@
+use std::borrow::Cow;
 use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
 
 use crate::config::{Settings, SettingsStore};
 use cosmic::app::Core;
+use cosmic::cosmic_theme::Spacing;
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
 use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
-use cosmic::widget::{mouse_area, settings, text, toggler, Column};
+use cosmic::widget::{divider, mouse_area, settings, text, toggler, Column};
 use cosmic::Element;
 use zbus::blocking::Connection;
 use zbus::zvariant::OwnedFd as ZbusFd;
@@ -47,6 +49,11 @@ fn countdown(deadline: Instant, now: Instant) -> String {
     let seconds = remaining.as_secs();
     let minutes = seconds / 60 + u64::from(seconds % 60 != 0 || remaining.subsec_nanos() != 0);
     format!("{minutes} min")
+}
+
+/// Inline diagnostic text, padded to line up with the rows above it.
+fn error_row<'a>(message: impl Into<Cow<'a, str>> + 'a) -> Element<'a, Message> {
+    cosmic::applet::padded_control(text::body(message)).into()
 }
 
 #[derive(Default)]
@@ -353,54 +360,96 @@ impl CaffeineApplet {
     }
 
     fn menu_content(&self) -> Element<'_, Message> {
-        // `menu_button` already carries the COSMIC menu padding, so the column
-        // only needs the vertical inset the official applet popups use.
-        let mut list = Column::new().padding([8, 0]);
+        let Spacing {
+            space_none,
+            space_xxs,
+            space_s,
+            ..
+        } = cosmic::theme::spacing();
 
+        // Each inner `Vec` is one logical group. Empty groups are dropped below,
+        // then survivors are joined with one divider between each adjacent pair.
+        // That makes a leading, trailing or doubled divider structurally
+        // impossible, whichever conditional sections happen to be present.
+        let mut sections: Vec<Vec<Element<'_, Message>>> = Vec::new();
+
+        // 1. Duration presets: a radio-like group. Always non-empty, because
+        //    `choices()` always appends `Indefinitely`.
         let now = Instant::now();
-        for choice in self.choices() {
-            let label = self.choice_label(choice, now);
-            let selected = self.active_choice == Some(choice);
-            list = list.push(
-                cosmic::applet::menu_button(text(label))
-                    // `ListItem` now carries its own corner radii; `[0.0; 4]`
-                    // is what it hardcoded before, and matches `AppletMenu`'s
-                    // `radius_0` so the selected row keeps the same geometry.
-                    .class(if selected {
-                        cosmic::theme::Button::ListItem([0.0; 4])
-                    } else {
-                        cosmic::theme::Button::AppletMenu
-                    })
-                    .selected(selected)
-                    .on_press(Message::Enable(choice)),
-            );
-        }
+        sections.push(
+            self.choices()
+                .into_iter()
+                .map(|choice| {
+                    let selected = self.active_choice == Some(choice);
+                    cosmic::applet::menu_button(text::body(self.choice_label(choice, now)))
+                        // `ListItem` now carries its own corner radii; `[0.0; 4]`
+                        // is what it hardcoded before, and matches `AppletMenu`'s
+                        // `radius_0` so the selected row keeps the same geometry.
+                        .class(if selected {
+                            cosmic::theme::Button::ListItem([0.0; 4])
+                        } else {
+                            cosmic::theme::Button::AppletMenu
+                        })
+                        .selected(selected)
+                        .on_press(Message::Enable(choice))
+                        .into()
+                })
+                .collect(),
+        );
 
+        // 2. Terminal action. Identical `menu_button` geometry to the durations
+        //    above, so without a rule it reads as one more duration option.
         if self.inhibit_fd.is_some() {
-            list = list.push(
-                cosmic::applet::menu_button(text("End Caffeine session"))
-                    .on_press(Message::Disable),
-            );
+            sections.push(vec![cosmic::applet::menu_button(text::body(
+                "End Caffeine session",
+            ))
+            .on_press(Message::Disable)
+            .into()]);
         }
 
+        // 3. A persistent setting rather than a one-shot action, and a
+        //    `padded_control` with no hover affordance. The rule signals that
+        //    this row does not behave like the buttons above it.
         if self.settings.dangerous_enable_closed_lid_control {
-            // Rows that aren't `menu_button`s need the horizontal inset that
-            // `list_column` used to supply; `padded_control` is what the
-            // official applets use for exactly this.
-            list = list.push(cosmic::applet::padded_control(settings::item(
+            sections.push(vec![cosmic::applet::padded_control(settings::item(
                 "Keep awake with lid closed",
                 cosmic::widget::container(
                     toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
                 ),
-            )));
+            ))
+            .into()]);
+        }
+
+        // 4. Diagnostics, kept as one section so two simultaneous errors are not
+        //    split by a rule. Pushed unconditionally; the filter below drops it
+        //    when empty, so the guards are never duplicated.
+        let mut errors: Vec<Element<'_, Message>> = Vec::new();
+        if self.settings.dangerous_enable_closed_lid_control {
             if let Some(error) = &self.lid_inhibit_error {
-                list = list.push(cosmic::applet::padded_control(text(format!(
+                errors.push(error_row(format!(
                     "Could not enable closed-lid mode: {error}"
-                ))));
+                )));
             }
         }
         if let Some(error) = &self.config_error {
-            list = list.push(cosmic::applet::padded_control(text(error)));
+            errors.push(error_row(error.as_str()));
+        }
+        sections.push(errors);
+
+        // `menu_button`/`padded_control` already carry the horizontal menu
+        // padding, so the column only needs the vertical inset.
+        let mut list = Column::new().padding([space_xxs, space_none]);
+        // `.filter()` MUST precede `.enumerate()` so the index counts
+        // *surviving* sections; reversed, an empty section would take index 0
+        // and let a leading divider through.
+        for (index, section) in sections.into_iter().filter(|s| !s.is_empty()).enumerate() {
+            if index > 0 {
+                list = list.push(
+                    cosmic::applet::padded_control(divider::horizontal::default())
+                        .padding([space_xxs, space_s]),
+                );
+            }
+            list = list.extend(section);
         }
         list.into()
     }
