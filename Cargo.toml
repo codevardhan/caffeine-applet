@@ -19,6 +19,8 @@ features = ["fluent-system", "desktop-requester"]
 
 [dependencies.libcosmic]
 git = "https://github.com/pop-os/libcosmic"
+# Matches the revision cosmic-applets uses for the COSMIC 1.9.0 release.
+rev = "5a8bd9482a35ae94c1e54edf77b331c6b970f170"
 default-features = false
 features = ["applet", "tokio", "wayland"]
 
