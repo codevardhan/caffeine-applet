@@ -13,6 +13,8 @@
         "--socket=wayland",
         "--share=ipc",
         "--device=dri",
+        "--filesystem=xdg-config/cosmic:rw",
+        "--talk-name=com.system76.CosmicSettingsDaemon",
         "--system-talk-name=org.freedesktop.login1"
     ],
     "modules": [
