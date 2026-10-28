@@ -1,18 +1,19 @@
-<svg width="16" height="16" viewBox="1.633 2.196 5.9 5.9" fill="none"
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none"
     xmlns="http://www.w3.org/2000/svg">
-    <rect x="1.633" y="2.196" width="5.9" height="5.9" fill="#000000" fill-opacity="0" />
-    <g id="applet-coffee-inactive">
-        <!-- Cup body -->
-        <path
-            d="m 3.6198947,6.3165951 h 8.7703483 v 6.6753209 a 1.8520833,1.8520833 135 0 1 -1.852083,1.852083 l -5.066182,0 A 1.8520833,1.8520833 45 0 1 3.6198947,12.991916 Z"
-            transform="matrix(0.39228595,0,0,0.39228595,0.96862496,0.99590163)"
-            fill="#232323" />
-        <!-- Handle outline -->
-        <path
-            d="m 12.390243,12.244141 c 1.27e-4,0 2.55e-4,0 3.82e-4,0 1.328336,-1e-6 2.404297,-0.972959 2.404297,-2.173828 0,-1.2008693 -1.075962,-2.1738281 -2.404297,-2.1738286 -1.27e-4,0 -2.55e-4,0 -3.82e-4,0 z"
-            transform="matrix(0.39228595,0,0,0.39228595,0.70125736,0.97919115)"
-            fill="none"
-            stroke="#232323"
-            stroke-width="1.39175" />
+    <g id="applet-coffee-inactive" stroke="#232323" stroke-width="1.5" fill="none"
+        stroke-linejoin="round">
+        <!-- Cup body, hollow. The path is the stroke centerline, inset 0.75 (half
+             the stroke width) from the outer edge so the painted boundary lands on
+             x 2..11, y 6..14 - identical to the solid "on" cup. -->
+        <path d="M 2.75 6.75 L 10.25 6.75 L 10.25 12
+                 A 1.25 1.25 0 0 1 9 13.25
+                 L 4 13.25
+                 A 1.25 1.25 0 0 1 2.75 12 Z" />
+
+        <!-- Handle. Geometry is shared verbatim with the "on" icon so the icon does
+             not appear to shift when a session is toggled. -->
+        <path d="M 10.25 8 A 2 2 0 1 1 10.25 11.5" />
+
+        <!-- No steam: an idle cup. -->
     </g>
 </svg>
