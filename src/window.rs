@@ -10,6 +10,7 @@ use cosmic::iced::window::Id;
 use cosmic::iced::{Subscription, Task};
 use cosmic::widget::{divider, mouse_area, settings, text, toggler, Column};
 use cosmic::Element;
+use zbus::blocking::connection::Builder as ConnectionBuilder;
 use zbus::blocking::Connection;
 use zbus::zvariant::OwnedFd as ZbusFd;
 
@@ -64,6 +65,8 @@ pub struct CaffeineApplet {
     config_error: Option<String>,
     popup: Option<Id>,
     inhibit_fd: Option<OwnedFd>,
+    screensaver_inhibit: Option<ScreenSaverInhibit>,
+    inhibit_error: Option<String>,
     lid_inhibit_fd: Option<OwnedFd>,
     lid_inhibit_error: Option<String>,
     active_choice: Option<CaffeineDuration>,
@@ -124,6 +127,76 @@ fn acquire_lid_inhibit() -> Result<OwnedFd, Box<dyn std::error::Error>> {
         .deserialize()?;
 
     Ok(reply.into())
+}
+
+const SCREENSAVER_NAME: &str = "org.freedesktop.ScreenSaver";
+/// cosmic-idle serves the interface at both paths; other desktops serve one.
+const SCREENSAVER_PATHS: [&str; 2] = ["/org/freedesktop/ScreenSaver", "/ScreenSaver"];
+/// zbus defaults to *no* method timeout, and these calls run on the UI thread,
+/// so a wedged screensaver service would otherwise hang the whole panel.
+const SCREENSAVER_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// A live `org.freedesktop.ScreenSaver` inhibit.
+///
+/// Owns its bus connection on purpose: cosmic-idle watches `NameOwnerChanged`
+/// and discards every inhibitor belonging to a unique bus name that disappears,
+/// so closing this connection releases the inhibit even if `UnInhibit` fails or
+/// we are killed before `Drop` runs. Deliberately not `Clone` — a clone's drop
+/// would retire a cookie the original still believes it holds.
+#[derive(Debug)]
+struct ScreenSaverInhibit {
+    conn: Connection,
+    cookie: u32,
+    /// Whichever of `SCREENSAVER_PATHS` answered, so `UnInhibit` goes back to
+    /// the same object.
+    path: &'static str,
+}
+
+impl Drop for ScreenSaverInhibit {
+    fn drop(&mut self) {
+        // Best effort: `conn` is dropped immediately after this returns and the
+        // resulting disconnect releases the inhibit anyway.
+        if let Err(err) = self.conn.call_method(
+            Some(SCREENSAVER_NAME),
+            self.path,
+            Some(SCREENSAVER_NAME),
+            "UnInhibit",
+            &(self.cookie,),
+        ) {
+            eprintln!(
+                "Failed to release the screensaver inhibit (closing the bus connection instead): {err}"
+            );
+        }
+    }
+}
+
+/// Ask the session's screensaver service to suppress blanking, locking and sleep.
+///
+/// On COSMIC this is the call that actually does the work: cosmic-idle knows
+/// nothing about logind inhibitors, but one screensaver inhibit makes it tear
+/// down the idle timers behind screen-off, auto-lock and auto-suspend alike.
+fn acquire_screensaver_inhibit() -> Result<ScreenSaverInhibit, Box<dyn std::error::Error>> {
+    let conn = ConnectionBuilder::session()?
+        .method_timeout(SCREENSAVER_TIMEOUT)
+        .build()?;
+
+    let mut last_err = None;
+    for path in SCREENSAVER_PATHS {
+        match conn.call_method(
+            Some(SCREENSAVER_NAME),
+            path,
+            Some(SCREENSAVER_NAME),
+            "Inhibit",
+            &("Caffeine Applet", "Caffeine session active"),
+        ) {
+            Ok(reply) => {
+                let cookie: u32 = reply.body().deserialize()?;
+                return Ok(ScreenSaverInhibit { conn, cookie, path });
+            }
+            Err(err) => last_err = Some(err),
+        }
+    }
+    Err(last_err.expect("SCREENSAVER_PATHS is never empty").into())
 }
 
 impl cosmic::Application for CaffeineApplet {
@@ -202,7 +275,7 @@ impl cosmic::Application for CaffeineApplet {
                 }
             }
             Message::ToggleInhibit => {
-                if self.inhibit_fd.is_some() {
+                if self.is_active() {
                     self.disable();
                 } else {
                     self.reload_settings();
@@ -224,9 +297,7 @@ impl cosmic::Application for CaffeineApplet {
             Message::Tick => {
                 if let Some(deadline) = self.deadline {
                     if Instant::now() >= deadline {
-                        self.inhibit_fd = None;
-                        self.active_choice = None;
-                        self.deadline = None;
+                        self.disable();
                     }
                 }
             }
@@ -243,7 +314,7 @@ impl cosmic::Application for CaffeineApplet {
     }
 
     fn view(&self) -> Element<'_, Self::Message> {
-        let icon = if self.inhibit_fd.is_some() || self.lid_inhibit_fd.is_some() {
+        let icon = if self.is_active() || self.lid_inhibit_fd.is_some() {
             ON
         } else {
             OFF
@@ -335,26 +406,68 @@ impl CaffeineApplet {
         }
     }
 
-    /// Acquire the inhibit lock (if not already held) and set the session.
-    /// Returns `false` if the lock could not be acquired.
+    /// True while a Caffeine session holds at least one of its main inhibitors.
+    /// The two are acquired and released together, so in practice they agree;
+    /// the `||` keeps the UI honest if that ever stops being true.
+    fn is_active(&self) -> bool {
+        self.inhibit_fd.is_some() || self.screensaver_inhibit.is_some()
+    }
+
+    fn finish_screensaver_inhibit(
+        &mut self,
+        result: Result<ScreenSaverInhibit, Box<dyn std::error::Error>>,
+    ) {
+        match result {
+            Ok(inhibit) => {
+                self.screensaver_inhibit = Some(inhibit);
+                self.inhibit_error = None;
+            }
+            Err(err) => {
+                eprintln!("Failed to inhibit the screensaver (is cosmic-idle running?): {err}");
+                self.inhibit_error = Some(format!(
+                    "Session started, but the screen may still blank: {err}"
+                ));
+            }
+        }
+    }
+
+    /// Acquire the inhibit locks (if not already held) and set the session.
+    /// Returns `false` if the session could not be started.
+    ///
+    /// Two mechanisms, acquired and released together:
+    ///   * logind `idle:sleep` — portable, blocks suspend requested from
+    ///     elsewhere, and is the only thing that works off COSMIC. Fatal.
+    ///   * `org.freedesktop.ScreenSaver` — the only thing cosmic-idle listens
+    ///     to, so it is what actually stops blanking, locking and suspending on
+    ///     COSMIC. Optional: other desktops may not offer it and a logind-only
+    ///     session is still worth having, so a failure degrades with a warning
+    ///     rather than aborting.
     fn enable(&mut self, choice: CaffeineDuration) -> bool {
-        if self.inhibit_fd.is_none() {
+        if !self.is_active() {
             match acquire_inhibit() {
-                Ok(fd) => self.inhibit_fd = Some(fd),
+                Ok(fd) => {
+                    self.inhibit_fd = Some(fd);
+                    self.inhibit_error = None;
+                }
                 Err(err) => {
                     eprintln!("Failed to acquire inhibit lock (is logind/elogind running?): {err}");
+                    self.inhibit_error = Some(format!("Could not start a Caffeine session: {err}"));
                     return false;
                 }
             }
+            self.finish_screensaver_inhibit(acquire_screensaver_inhibit());
         }
         self.active_choice = Some(choice);
         self.deadline = choice.duration().map(|d| Instant::now() + d);
         true
     }
 
-    /// Drop the fd, releasing the inhibit lock.
+    /// Drop both inhibitors. `ScreenSaverInhibit::drop` sends `UnInhibit`;
+    /// closing its connection is the backstop if that call fails.
     fn disable(&mut self) {
         self.inhibit_fd = None;
+        self.screensaver_inhibit = None;
+        self.inhibit_error = None;
         self.active_choice = None;
         self.deadline = None;
     }
@@ -399,7 +512,7 @@ impl CaffeineApplet {
 
         // 2. Terminal action. Identical `menu_button` geometry to the durations
         //    above, so without a rule it reads as one more duration option.
-        if self.inhibit_fd.is_some() {
+        if self.is_active() {
             sections.push(vec![cosmic::applet::menu_button(text::body(
                 "End Caffeine session",
             ))
@@ -424,6 +537,9 @@ impl CaffeineApplet {
         //    split by a rule. Pushed unconditionally; the filter below drops it
         //    when empty, so the guards are never duplicated.
         let mut errors: Vec<Element<'_, Message>> = Vec::new();
+        if let Some(error) = &self.inhibit_error {
+            errors.push(error_row(error.as_str()));
+        }
         if self.settings.dangerous_enable_closed_lid_control {
             if let Some(error) = &self.lid_inhibit_error {
                 errors.push(error_row(format!(

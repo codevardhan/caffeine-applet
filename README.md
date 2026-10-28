@@ -129,6 +129,28 @@ control and is not saved; every applet launch starts it off. Setting the config
 flag back to `false` releases any active lid inhibitor on the next settings
 reload. Opt in deliberately for your hardware and cooling setup.
 
+## How a session keeps the system awake
+
+Starting a session acquires two inhibitors together, and ending one releases both:
+
+- **logind** — `org.freedesktop.login1.Manager.Inhibit` with `idle:sleep` in block
+  mode. Portable, and it blocks suspend requested from elsewhere. Required: if this
+  cannot be acquired the session does not start.
+- **Screensaver** — `org.freedesktop.ScreenSaver.Inhibit` on the session bus. On
+  COSMIC this is the one that actually stops the screen blanking. `cosmic-idle`
+  drives screen-off, auto-lock and auto-suspend, and it does not read logind
+  inhibitors at all, so the logind lock alone leaves the display blanking on
+  schedule. Optional: desktops that do not offer the interface still get a
+  logind-only session, and the popup says so.
+
+If the screensaver inhibitor could not be acquired, the popup shows "Session
+started, but the screen may still blank". Recover by ending the session and
+starting it again.
+
+The screensaver inhibitor is held by a dedicated D-Bus connection. It is released
+explicitly on exit, and closing the connection releases it even if the applet is
+killed outright.
+
 ## Closed-lid behavior
 
 When the optional switch is on, it uses the same
