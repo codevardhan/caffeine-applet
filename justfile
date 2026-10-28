@@ -91,8 +91,8 @@ install:
           install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}-symbolic.svg"
           ;;
         coffee-full.svg|active.svg)
-          # install as the default AND as an explicit variant
-          install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.svg"
+          # panel "on" state only. The default {{appid}}.svg comes from icon.svg,
+          # which is a full-colour launcher icon rather than this recoloured mark.
           install -Dm0644 "$src" "{{app-icons-dst-dir}}/{{appid}}.On.svg"
           ;;
         coffee-empty.svg|inactive.svg)
