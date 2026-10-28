@@ -82,6 +82,17 @@
 
 
   <releases>
+    <release version="0.1.3" date="2026-10-28">
+      <description>
+        <p>Sessions now keep the screen on, and the Flatpak build follows your COSMIC theme.</p>
+        <ul>
+          <li>Fixed the screen still blanking during a Caffeine session on COSMIC: the session held only a logind inhibitor, which cosmic-idle does not read.</li>
+          <li>Fixed the popup ignoring the system theme: it had no access to the COSMIC theme configuration and fell back to built-in defaults.</li>
+          <li>Corner radii, panel and popup colours, and the frosted glass effect now match the rest of the desktop.</li>
+          <li>The applet now picks up theme changes live, without a restart.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-10-16">
       <description>
         <p>Timed sessions, configurable durations, and an optional closed-lid switch.</p>
