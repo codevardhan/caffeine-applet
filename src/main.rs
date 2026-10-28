@@ -1,6 +1,6 @@
 mod config;
-mod window;
 mod i18n;
+mod window;
 
 use crate::window::CaffeineApplet;
 
