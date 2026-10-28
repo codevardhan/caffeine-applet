@@ -15,6 +15,7 @@
         "--device=dri",
         "--filesystem=xdg-config/cosmic:rw",
         "--talk-name=com.system76.CosmicSettingsDaemon",
+        "--talk-name=org.freedesktop.ScreenSaver",
         "--system-talk-name=org.freedesktop.login1"
     ],
     "modules": [

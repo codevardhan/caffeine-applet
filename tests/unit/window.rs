@@ -138,6 +138,9 @@ fn default_applet_has_no_active_session() {
     let app = CaffeineApplet::default();
     assert!(app.popup.is_none());
     assert!(app.inhibit_fd.is_none());
+    assert!(app.screensaver_inhibit.is_none());
+    assert!(app.inhibit_error.is_none());
+    assert!(!app.is_active());
     assert_eq!(app.active_choice, None);
     assert!(app.deadline.is_none());
 }
@@ -189,6 +192,8 @@ fn disable_clears_active_session() {
     cosmic::Application::update(&mut app, Message::Disable);
 
     assert!(app.inhibit_fd.is_none());
+    assert!(app.screensaver_inhibit.is_none());
+    assert!(!app.is_active());
     assert_eq!(app.active_choice, None);
     assert!(app.deadline.is_none());
 }
@@ -285,6 +290,8 @@ fn tick_after_deadline_clears_session() {
     cosmic::Application::update(&mut app, Message::Tick);
 
     assert!(app.inhibit_fd.is_none());
+    assert!(app.screensaver_inhibit.is_none());
+    assert!(!app.is_active());
     assert_eq!(app.active_choice, None);
     assert!(app.deadline.is_none());
 }
@@ -334,7 +341,7 @@ fn inhibit_fd_is_open_while_held_and_released_on_drop() {
 }
 
 #[test]
-#[ignore = "requires org.freedesktop.login1 on the system bus"]
+#[ignore = "requires org.freedesktop.login1 (system bus); also touches the session bus"]
 fn enable_from_scratch_acquires_inhibit_and_sets_deadline() {
     let mut app = CaffeineApplet::default();
 
@@ -343,6 +350,113 @@ fn enable_from_scratch_acquires_inhibit_and_sets_deadline() {
     assert!(app.inhibit_fd.is_some());
     assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(15)));
     assert!(app.deadline.is_some());
+}
+
+//  Screensaver inhibit ─
+//
+// On COSMIC, cosmic-idle drives screen-off, auto-lock and auto-suspend, and it
+// consults `org.freedesktop.ScreenSaver` rather than logind. These cover the
+// policy around that second inhibitor; the ones needing a live bus are ignored.
+
+#[test]
+fn screensaver_failure_degrades_instead_of_aborting_the_session() {
+    let mut app = CaffeineApplet::default();
+    // Pretend logind succeeded, as `enable` guarantees before it gets here.
+    app.inhibit_fd = Some(dummy_fd());
+
+    app.finish_screensaver_inhibit(Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "no such name org.freedesktop.ScreenSaver",
+    )
+    .into()));
+
+    assert!(app.screensaver_inhibit.is_none());
+    assert!(app
+        .inhibit_error
+        .as_deref()
+        .expect("degraded session should warn")
+        .contains("may still blank"));
+    assert!(app.is_active(), "a logind-only session is still a session");
+}
+
+#[test]
+fn disable_clears_a_degraded_session_error() {
+    let mut app = CaffeineApplet::default();
+    app.inhibit_fd = Some(dummy_fd());
+    app.inhibit_error = Some("stale".into());
+
+    let _ = cosmic::Application::update(&mut app, Message::Disable);
+
+    assert!(app.inhibit_error.is_none());
+}
+
+#[test]
+fn timer_expiry_clears_a_degraded_session_error() {
+    let mut app = CaffeineApplet::default();
+    app.inhibit_fd = Some(dummy_fd());
+    app.inhibit_error = Some("stale".into());
+    app.deadline = Some(Instant::now() - Duration::from_secs(1));
+
+    let _ = cosmic::Application::update(&mut app, Message::Tick);
+
+    assert!(app.inhibit_error.is_none());
+    assert!(app.screensaver_inhibit.is_none());
+}
+
+#[test]
+fn is_active_tracks_either_main_inhibitor_but_not_the_lid_one() {
+    let mut app = CaffeineApplet::default();
+    assert!(!app.is_active());
+
+    app.lid_inhibit_fd = Some(dummy_fd());
+    assert!(
+        !app.is_active(),
+        "closed-lid mode is not a Caffeine session"
+    );
+
+    app.inhibit_fd = Some(dummy_fd());
+    assert!(app.is_active());
+}
+
+#[test]
+#[ignore = "requires an org.freedesktop.ScreenSaver owner (cosmic-idle) on the session bus"]
+fn acquire_screensaver_inhibit_returns_a_cookie_and_releases_on_drop() {
+    let inhibit = acquire_screensaver_inhibit().expect("should acquire a screensaver inhibit");
+    assert!(SCREENSAVER_PATHS.contains(&inhibit.path));
+    assert!(
+        !inhibit.conn.is_closed(),
+        "connection must outlive the cookie"
+    );
+    // `UnInhibit` is best effort, and closing the connection is the backstop:
+    // cosmic-idle drops every inhibitor owned by a vanished unique bus name.
+    drop(inhibit);
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 (system bus) and cosmic-idle (session bus)"]
+fn enable_acquires_both_inhibitors_and_disable_releases_both() {
+    let mut app = CaffeineApplet::default();
+
+    assert!(app.enable(CaffeineDuration::Minutes(15)));
+    assert!(app.inhibit_fd.is_some());
+    assert!(app.screensaver_inhibit.is_some());
+    assert!(app.inhibit_error.is_none(), "{:?}", app.inhibit_error);
+
+    app.disable();
+    assert!(app.inhibit_fd.is_none());
+    assert!(app.screensaver_inhibit.is_none());
+}
+
+#[test]
+#[ignore = "requires org.freedesktop.login1 (system bus) and cosmic-idle (session bus)"]
+fn timer_expiry_releases_the_screensaver_inhibit_too() {
+    let mut app = CaffeineApplet::default();
+    assert!(app.enable(CaffeineDuration::Minutes(15)));
+    app.deadline = Some(Instant::now() - Duration::from_secs(1));
+
+    let _ = cosmic::Application::update(&mut app, Message::Tick);
+
+    assert!(app.screensaver_inhibit.is_none());
 }
 
 // Closed-lid mode is independent of ordinary Caffeine timers.
@@ -593,7 +707,7 @@ fn explicit_menu_selection_ignores_configured_default() {
 }
 
 #[test]
-#[ignore = "requires org.freedesktop.login1 on the system bus"]
+#[ignore = "requires org.freedesktop.login1 (system bus); also touches the session bus"]
 fn left_click_loads_configured_default_and_next_click_ends_session() {
     let test = crate::config::tests::TestConfig::new();
     let settings = Settings {
@@ -613,5 +727,6 @@ fn left_click_loads_configured_default_and_next_click_ends_session() {
     assert!(app.choices().contains(&CaffeineDuration::Minutes(25)));
     let _ = cosmic::Application::update(&mut app, Message::ToggleInhibit);
     assert!(app.inhibit_fd.is_none());
+    assert!(app.screensaver_inhibit.is_none());
     assert!(app.deadline.is_none());
 }
