@@ -54,9 +54,11 @@ check *args:
 # Runs a clippy check with JSON message format
 check-json: (check '--message-format=json')
 
-# The lint gate CI enforces. --all-targets so the tests are held to the same bar
-# as the binary; they are clippy-clean and keeping them that way is cheaper than
-# letting warnings pile back up.
+# The lint gate CI enforces, on the toolchain CI pins (see ci.yml). If this is
+# green on a different rustup default than that pin, it is not the same check.
+# --all-targets so the tests are held to the same bar as the binary; they are
+# clippy-clean and keeping them that way is cheaper than letting warnings pile
+# back up.
 check-strict:
     cargo clippy --all-features --all-targets -- -W clippy::pedantic -D warnings
 
