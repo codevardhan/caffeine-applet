@@ -3,7 +3,7 @@ use cosmic::cosmic_config::ConfigSet;
 use cosmic::cosmic_config::{Config, ConfigGet, Error};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub const KEY: &str = "settings";
 pub const DEFAULT_TEMPLATE: &str = include_str!("../resources/settings.ron");
@@ -18,13 +18,13 @@ pub struct SettingsStore {
 impl SettingsStore {
     pub fn new(id: &str, version: u64) -> Result<Self, String> {
         let root = dirs::config_dir().ok_or("Could not locate the user config directory")?;
-        Self::with_root(id, version, root)
+        Self::with_root(id, version, &root)
     }
 
-    fn with_root(id: &str, version: u64, root: PathBuf) -> Result<Self, String> {
+    fn with_root(id: &str, version: u64, root: &Path) -> Result<Self, String> {
         // Let Config validate the ID before using it to build the file path.
-        let config =
-            Config::with_custom_path(id, version, root.clone()).map_err(|err| err.to_string())?;
+        let config = Config::with_custom_path(id, version, root.to_path_buf())
+            .map_err(|err| err.to_string())?;
         let path = root
             .join("cosmic")
             .join(id)
@@ -131,7 +131,7 @@ pub(crate) mod tests {
                     .as_nanos(),
                 NEXT.fetch_add(1, Ordering::Relaxed),
             ));
-            let config = SettingsStore::with_root("test.caffeine", 1, root.clone()).unwrap();
+            let config = SettingsStore::with_root("test.caffeine", 1, &root).unwrap();
             let path = root.join("cosmic/test.caffeine/v1/settings");
             Self { config, path, root }
         }

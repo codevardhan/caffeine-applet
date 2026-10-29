@@ -52,7 +52,8 @@ impl CaffeineDuration {
 fn countdown(deadline: Instant, now: Instant) -> String {
     let remaining = deadline.saturating_duration_since(now);
     let seconds = remaining.as_secs();
-    let minutes = seconds / 60 + u64::from(seconds % 60 != 0 || remaining.subsec_nanos() != 0);
+    let minutes =
+        seconds / 60 + u64::from(!seconds.is_multiple_of(60) || remaining.subsec_nanos() != 0);
     fl!("countdown-minutes", minutes = minutes)
 }
 
@@ -89,7 +90,7 @@ pub enum Message {
 }
 
 /// Ask logind for an idle+sleep inhibit lock.
-/// Returns an OwnedFd — the inhibit stays active as long as this fd is open.
+/// Returns an `OwnedFd` — the inhibit stays active as long as this fd is open.
 fn acquire_inhibit() -> Result<OwnedFd, Box<dyn std::error::Error>> {
     let conn = Connection::system()?;
     let reply: ZbusFd = conn
@@ -231,7 +232,7 @@ impl cosmic::Application for CaffeineApplet {
                 window.reload_settings();
             }
             Err(err) => {
-                window.config_error = Some(fl!("error-open-settings", error = err.to_string()))
+                window.config_error = Some(fl!("error-open-settings", error = err));
             }
         }
         (window, Task::none())
@@ -360,7 +361,7 @@ impl CaffeineApplet {
                 self.config_error = None;
             }
             Err(err) => {
-                self.config_error = Some(fl!("error-load-settings", error = err.to_string()))
+                self.config_error = Some(fl!("error-load-settings", error = err));
             }
         }
     }
@@ -368,8 +369,7 @@ impl CaffeineApplet {
     fn default_choice(&self) -> CaffeineDuration {
         self.settings
             .default_duration_minutes
-            .map(CaffeineDuration::Minutes)
-            .unwrap_or(CaffeineDuration::Indefinite)
+            .map_or(CaffeineDuration::Indefinite, CaffeineDuration::Minutes)
     }
 
     fn choices(&self) -> Vec<CaffeineDuration> {
