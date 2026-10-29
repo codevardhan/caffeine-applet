@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A force-push should cancel the run it superseded rather than queue behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Format, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # libxkbcommon is the only library the binary links at runtime; wayland is
+      # dlopened, so its headers are not needed to build.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxkbcommon-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: extractions/setup-just@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: just check-strict
+
+      # The test module is not clippy-clean yet, so this reports without
+      # blocking. Delete the continue-on-error once those warnings are gone and
+      # fold --all-targets into check-strict.
+      - name: Lint tests (advisory)
+        continue-on-error: true
+        run: cargo clippy --all-features --all-targets -- -W clippy::pedantic -D warnings
+
+      # Nine tests self-skip when the logind system bus or cosmic-idle is
+      # absent, which is always true on a runner. They are reported as ignored,
+      # not failed.
+      - name: Test
+        run: cargo test --all-features
+
+  metadata:
+    name: Release metadata
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # identify comes from imagemagick, appstreamcli from appstream. Both are
+      # optional in the recipe: without them it skips those checks and still
+      # passes, so CI installs them to make sure they actually run.
+      - name: Install metadata checkers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick appstream
+
+      - uses: extractions/setup-just@v2
+
+      # check-metadata, not check-release: the latter also refuses to re-tag a
+      # published version, which is expected to fail on every commit after a
+      # release. It stays a manual pre-tag gate.
+      - name: Check metadata
+        run: just check-metadata
+
+  flatpak:
+    name: Flatpak build
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      # The manifest builds on com.system76.Cosmic.BaseApp, which lives on
+      # System76's remote rather than Flathub.
+      - name: Add the COSMIC remote
+        run: |
+          flatpak remote-add --if-not-exists --user \
+            cosmic https://apt.pop-os.org/cosmic/cosmic.flatpakrepo
+
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: caffeine-applet.flatpak
+          manifest-path: com.github.codevardhan.caffeine-applet.json
+          cache-key: flatpak-builder-${{ github.sha }}
