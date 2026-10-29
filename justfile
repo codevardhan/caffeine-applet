@@ -54,12 +54,11 @@ check *args:
 # Runs a clippy check with JSON message format
 check-json: (check '--message-format=json')
 
-# The lint gate CI enforces. Scoped to the binary on purpose: the test module
-# still carries warnings (unused_must_use, field_reassign_with_default) that are
-# being cleaned up separately, and gating on them now would only teach everyone
-# to ignore a red build.
+# The lint gate CI enforces. --all-targets so the tests are held to the same bar
+# as the binary; they are clippy-clean and keeping them that way is cheaper than
+# letting warnings pile back up.
 check-strict:
-    cargo clippy --all-features -- -W clippy::pedantic -D warnings
+    cargo clippy --all-features --all-targets -- -W clippy::pedantic -D warnings
 
 # Run the application for testing purposes
 run *args:
