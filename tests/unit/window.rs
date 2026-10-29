@@ -37,6 +37,25 @@ fn label_hour1() {
     assert_eq!(CaffeineDuration::Minutes(60).label(), "1 hour");
 }
 
+/// The singular/plural split lives in the `.ftl`, not in Rust. These cover
+/// both Fluent branches for each unit, and assert the absence of the
+/// directionality isolation marks Fluent inserts around placeables by default.
+#[test]
+fn label_picks_fluent_plural_forms_without_isolation_marks() {
+    assert_eq!(CaffeineDuration::Minutes(1).label(), "1 minute");
+    assert_eq!(CaffeineDuration::Minutes(2).label(), "2 minutes");
+    assert_eq!(CaffeineDuration::Minutes(120).label(), "2 hours");
+    for label in [
+        CaffeineDuration::Minutes(1).label(),
+        CaffeineDuration::Minutes(120).label(),
+    ] {
+        assert!(
+            !label.contains('\u{2068}') && !label.contains('\u{2069}'),
+            "{label:?} still carries Fluent isolation marks"
+        );
+    }
+}
+
 #[test]
 fn label_indefinite() {
     assert_eq!(CaffeineDuration::Indefinite.label(), "Indefinitely");
@@ -575,7 +594,7 @@ fn selected_row_has_live_remaining_time_and_indefinite_has_no_countdown() {
     app.deadline = Some(now + Duration::from_secs(20 * 60 + 5));
     assert_eq!(
         app.choice_label(CaffeineDuration::Minutes(25), now),
-        "25 minutes — 21 min left"
+        "25 minutes - 21 min left"
     );
     assert_eq!(
         app.choice_label(CaffeineDuration::Minutes(15), now),
@@ -585,7 +604,7 @@ fn selected_row_has_live_remaining_time_and_indefinite_has_no_countdown() {
     app.deadline = None;
     assert_eq!(
         app.choice_label(CaffeineDuration::Indefinite, now),
-        "Indefinitely — active"
+        "Indefinitely - active"
     );
 }
 
