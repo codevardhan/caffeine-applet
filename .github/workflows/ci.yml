@@ -41,13 +41,6 @@ jobs:
       - name: Lint
         run: just check-strict
 
-      # The test module is not clippy-clean yet, so this reports without
-      # blocking. Delete the continue-on-error once those warnings are gone and
-      # fold --all-targets into check-strict.
-      - name: Lint tests (advisory)
-        continue-on-error: true
-        run: cargo clippy --all-features --all-targets -- -W clippy::pedantic -D warnings
-
       # Nine tests self-skip when the logind system bus or cosmic-idle is
       # absent, which is always true on a runner. They are reported as ignored,
       # not failed.
