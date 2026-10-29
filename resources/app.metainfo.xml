@@ -4,7 +4,6 @@
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <project_group>COSMIC</project_group>
-  <developer_name>Harshavardhan Manohar</developer_name>
   <update_contact>harsha7vardhan@gmail.com</update_contact>
 
   <developer id="com.github.codevardhan">
@@ -49,7 +48,6 @@
 
   <categories>
     <category>Utility</category>
-    <category>COSMIC</category>
   </categories>
 
   <screenshots>

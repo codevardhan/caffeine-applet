@@ -99,7 +99,7 @@ fn labels_are_unique() {
 fn duration_minutes15_is_15_minutes() {
     assert_eq!(
         CaffeineDuration::Minutes(15).duration(),
-        Some(Duration::from_secs(15 * 60))
+        Some(Duration::from_mins(15))
     );
 }
 
@@ -107,7 +107,7 @@ fn duration_minutes15_is_15_minutes() {
 fn duration_minutes30_is_30_minutes() {
     assert_eq!(
         CaffeineDuration::Minutes(30).duration(),
-        Some(Duration::from_secs(30 * 60))
+        Some(Duration::from_mins(30))
     );
 }
 
@@ -115,7 +115,7 @@ fn duration_minutes30_is_30_minutes() {
 fn duration_hour1_is_60_minutes() {
     assert_eq!(
         CaffeineDuration::Minutes(60).duration(),
-        Some(Duration::from_secs(60 * 60))
+        Some(Duration::from_mins(60))
     );
 }
 
@@ -273,7 +273,7 @@ fn enable_when_already_active_updates_choice_without_reacquiring() {
     let mut app = CaffeineApplet {
         inhibit_fd: Some(dummy_fd()),
         active_choice: Some(CaffeineDuration::Minutes(15)),
-        deadline: Some(Instant::now() + Duration::from_secs(15 * 60)),
+        deadline: Some(Instant::now() + Duration::from_mins(15)),
         ..Default::default()
     };
 
@@ -292,7 +292,7 @@ fn enable_indefinite_when_already_active_clears_deadline() {
     let mut app = CaffeineApplet {
         inhibit_fd: Some(dummy_fd()),
         active_choice: Some(CaffeineDuration::Minutes(15)),
-        deadline: Some(Instant::now() + Duration::from_secs(15 * 60)),
+        deadline: Some(Instant::now() + Duration::from_mins(15)),
         ..Default::default()
     };
 
@@ -618,7 +618,7 @@ fn lid_inhibitor_is_registered_and_released_on_drop() {
 #[test]
 fn countdown_uses_deadline_and_rounds_up_without_drifting() {
     let start = Instant::now();
-    let deadline = start + Duration::from_secs(90 * 60);
+    let deadline = start + Duration::from_mins(90);
     assert_eq!(countdown(deadline, start), "90 min");
     assert_eq!(
         countdown(deadline, start + Duration::from_secs(30 * 60 + 1)),
@@ -805,8 +805,8 @@ fn left_click_loads_configured_default_and_next_click_ends_session() {
     assert_eq!(app.active_choice, Some(CaffeineDuration::Minutes(25)));
     assert!(app.inhibit_fd.is_some());
     let deadline = app.deadline.unwrap();
-    assert!(deadline >= before + Duration::from_secs(25 * 60));
-    assert!(deadline <= Instant::now() + Duration::from_secs(25 * 60));
+    assert!(deadline >= before + Duration::from_mins(25));
+    assert!(deadline <= Instant::now() + Duration::from_mins(25));
     assert!(app.choices().contains(&CaffeineDuration::Minutes(25)));
     dispatch(&mut app, Message::ToggleInhibit);
     assert!(app.inhibit_fd.is_none());
