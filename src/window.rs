@@ -3,6 +3,7 @@ use std::os::fd::OwnedFd;
 use std::time::{Duration, Instant};
 
 use crate::config::{Settings, SettingsStore};
+use crate::fl;
 use cosmic::app::Core;
 use cosmic::cosmic_theme::Spacing;
 use cosmic::iced::platform_specific::shell::wayland::commands::popup::{destroy_popup, get_popup};
@@ -26,13 +27,16 @@ pub enum CaffeineDuration {
 }
 
 impl CaffeineDuration {
+    /// Rust picks the unit; Fluent picks the plural form. Languages with more
+    /// than English's two plural categories are handled by the `.ftl` alone.
     fn label(self) -> String {
         match self {
-            Self::Minutes(1) => "1 minute".into(),
-            Self::Minutes(60) => "1 hour".into(),
-            Self::Minutes(minutes) if minutes % 60 == 0 => format!("{} hours", minutes / 60),
-            Self::Minutes(minutes) => format!("{minutes} minutes"),
-            Self::Indefinite => "Indefinitely".into(),
+            Self::Minutes(minutes) if minutes % 60 == 0 => {
+                let hours: u32 = minutes / 60;
+                fl!("duration-hours", hours = hours)
+            }
+            Self::Minutes(minutes) => fl!("duration-minutes", minutes = minutes),
+            Self::Indefinite => fl!("duration-indefinite"),
         }
     }
 
@@ -49,7 +53,7 @@ fn countdown(deadline: Instant, now: Instant) -> String {
     let remaining = deadline.saturating_duration_since(now);
     let seconds = remaining.as_secs();
     let minutes = seconds / 60 + u64::from(seconds % 60 != 0 || remaining.subsec_nanos() != 0);
-    format!("{minutes} min")
+    fl!("countdown-minutes", minutes = minutes)
 }
 
 /// Inline diagnostic text, padded to line up with the rows above it.
@@ -226,7 +230,9 @@ impl cosmic::Application for CaffeineApplet {
                 window.config = Some(config);
                 window.reload_settings();
             }
-            Err(err) => window.config_error = Some(format!("Could not open settings: {err}")),
+            Err(err) => {
+                window.config_error = Some(fl!("error-open-settings", error = err.to_string()))
+            }
         }
         (window, Task::none())
     }
@@ -353,7 +359,9 @@ impl CaffeineApplet {
                 self.settings = settings;
                 self.config_error = None;
             }
-            Err(err) => self.config_error = Some(format!("Could not load settings: {err}. Check the settings file; existing values are still in use.")),
+            Err(err) => {
+                self.config_error = Some(fl!("error-load-settings", error = err.to_string()))
+            }
         }
     }
 
@@ -387,8 +395,12 @@ impl CaffeineApplet {
             return choice.label();
         }
         match self.deadline {
-            Some(deadline) => format!("{} — {} left", choice.label(), countdown(deadline, now)),
-            None => format!("{} — active", choice.label()),
+            Some(deadline) => fl!(
+                "choice-active-timed",
+                label = choice.label(),
+                remaining = countdown(deadline, now)
+            ),
+            None => fl!("choice-active-indefinite", label = choice.label()),
         }
     }
 
@@ -424,9 +436,7 @@ impl CaffeineApplet {
             }
             Err(err) => {
                 eprintln!("Failed to inhibit the screensaver (is cosmic-idle running?): {err}");
-                self.inhibit_error = Some(format!(
-                    "Session started, but the screen may still blank: {err}"
-                ));
+                self.inhibit_error = Some(fl!("error-screensaver", error = err.to_string()));
             }
         }
     }
@@ -451,7 +461,7 @@ impl CaffeineApplet {
                 }
                 Err(err) => {
                     eprintln!("Failed to acquire inhibit lock (is logind/elogind running?): {err}");
-                    self.inhibit_error = Some(format!("Could not start a Caffeine session: {err}"));
+                    self.inhibit_error = Some(fl!("error-start-session", error = err.to_string()));
                     return false;
                 }
             }
@@ -513,9 +523,9 @@ impl CaffeineApplet {
         // 2. Terminal action. Identical `menu_button` geometry to the durations
         //    above, so without a rule it reads as one more duration option.
         if self.is_active() {
-            sections.push(vec![cosmic::applet::menu_button(text::body(
-                "End Caffeine session",
-            ))
+            sections.push(vec![cosmic::applet::menu_button(text::body(fl!(
+                "end-session"
+            )))
             .on_press(Message::Disable)
             .into()]);
         }
@@ -525,7 +535,7 @@ impl CaffeineApplet {
         //    this row does not behave like the buttons above it.
         if self.settings.dangerous_enable_closed_lid_control {
             sections.push(vec![cosmic::applet::padded_control(settings::item(
-                "Keep awake with lid closed",
+                fl!("lid-control"),
                 cosmic::widget::container(
                     toggler(self.lid_inhibit_fd.is_some()).on_toggle(Message::ToggleLidInhibit),
                 ),
@@ -542,9 +552,7 @@ impl CaffeineApplet {
         }
         if self.settings.dangerous_enable_closed_lid_control {
             if let Some(error) = &self.lid_inhibit_error {
-                errors.push(error_row(format!(
-                    "Could not enable closed-lid mode: {error}"
-                )));
+                errors.push(error_row(fl!("error-lid-control", error = error.as_str())));
             }
         }
         if let Some(error) = &self.config_error {

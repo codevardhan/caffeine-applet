@@ -16,6 +16,9 @@ pub fn init(requested_languages: &[LanguageIdentifier]) {
     if let Err(why) = localizer().select(requested_languages) {
         eprintln!("error while loading fluent localizations: {why}");
     }
+    // `select` builds fresh bundles, which isolate again by default, so the
+    // call in `LANGUAGE_LOADER` does not carry over to them.
+    LANGUAGE_LOADER.set_use_isolating(false);
 }
 
 // Get the `Localizer` to be used for localizing this library.
@@ -34,6 +37,13 @@ pub static LANGUAGE_LOADER: LazyLock<FluentLanguageLoader> = LazyLock::new(|| {
     loader
         .load_fallback_language(&Localizations)
         .expect("Error while loading fallback language");
+
+    // Fluent brackets every placeable in U+2068/U+2069 by default. The marks
+    // are invisible but they are real characters: they survive into the
+    // `String` we hand to the widgets, so they widen text measurements and
+    // break exact comparisons. Nothing here mixes writing directions mid
+    // sentence, so the protection costs more than it buys.
+    loader.set_use_isolating(false);
 
     loader
 });
