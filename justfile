@@ -58,6 +58,79 @@ check-json: (check '--message-format=json')
 run *args:
     env RUST_BACKTRACE=full cargo run --release {{args}}
 
+# Checks the release metadata is consistent. Run before tagging.
+#
+# Each check here corresponds to a mistake that has actually shipped: 0.1.2 was
+# announced in the AppStream metadata but never tagged, and its four screenshot
+# URLs were pinned to a tag that did not exist yet, so all of them 404'd in the
+# store listing.
+check-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    status=0
+    fail() { echo "FAIL: $1" >&2; status=1; }
+
+    cargo_version="$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)"
+    meta=resources/app.metainfo.xml
+
+    # The newest <release> must match Cargo.toml. Stores read "what's new" from
+    # the first entry, so a stale one advertises the wrong changelog.
+    meta_version="$(grep -oPm1 '(?<=<release version=")[^"]+' "$meta")"
+    if [ "$cargo_version" != "$meta_version" ]; then
+      fail "Cargo.toml is $cargo_version but the newest metainfo release is $meta_version"
+    fi
+
+    # A release entry needs a date; appstreamcli does not treat a missing one as
+    # an error, but stores sort on it.
+    if ! grep -qm1 "<release version=\"$cargo_version\" date=\"[0-9-]\+\"" "$meta"; then
+      fail "the $cargo_version release entry has no date attribute"
+    fi
+
+    # Screenshot URLs must float. Pinning them to a tag cannot work: the URL
+    # lives inside the commit being tagged, so it can only ever reference the
+    # previous release.
+    if grep -qE 'raw\.githubusercontent\.com/[^"]*/v[0-9]+\.[0-9]+\.[0-9]+/' "$meta"; then
+      fail "metainfo has tag-pinned raw.githubusercontent URLs; point them at main"
+      grep -nE 'raw\.githubusercontent\.com/[^"]*/v[0-9]+\.[0-9]+\.[0-9]+/' "$meta" >&2
+    fi
+
+    # Every referenced screenshot must exist in-tree, or it 404s once pushed.
+    while read -r shot; do
+      [ -f "screenshots/$shot" ] || fail "metainfo references screenshots/$shot, which is missing"
+    done < <(grep -oP '(?<=/screenshots/)[A-Za-z0-9_.-]+\.png' "$meta" | sort -u)
+
+    # The store crops to 16:9. Odd sizes get letterboxed or rejected.
+    if command -v identify >/dev/null; then
+      for shot in screenshots/*.png; do
+        size="$(identify -format '%wx%h' "$shot")"
+        [ "$size" = "1536x864" ] || fail "$shot is $size, expected 1536x864"
+      done
+    else
+      echo "note: ImageMagick not found, skipping screenshot dimension check" >&2
+    fi
+
+    if command -v appstreamcli >/dev/null; then
+      appstreamcli validate --no-net "$meta" >/dev/null 2>&1 || {
+        fail "appstreamcli validation failed"
+        appstreamcli validate --no-net "$meta" >&2 || true
+      }
+    else
+      echo "note: appstreamcli not found, skipping AppStream validation" >&2
+    fi
+
+    # Re-tagging a published version silently rewrites history for anyone who
+    # already fetched it, so make it a deliberate choice rather than a surprise.
+    if git rev-parse -q --verify "refs/tags/v$cargo_version" >/dev/null; then
+      if [ "$(git rev-parse "v$cargo_version^{commit}")" = "$(git rev-parse HEAD)" ]; then
+        echo "note: v$cargo_version already points at HEAD" >&2
+      else
+        fail "v$cargo_version already exists and points elsewhere; moving it rewrites a published tag"
+      fi
+    fi
+
+    [ $status -eq 0 ] && echo "Release metadata OK for $cargo_version"
+    exit $status
+
 # Installs files
 install:
     #!/usr/bin/env bash

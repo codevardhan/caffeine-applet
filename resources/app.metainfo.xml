@@ -55,25 +55,25 @@
   <screenshots>
     <screenshot type="default">
       <image>
-        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_on.png</image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/main/screenshots/screenshot_on.png</image>
       <caption>An indefinite keep-awake session running, with the option to end it</caption>
     </screenshot>
 
     <screenshot>
       <image>
-        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_off.png</image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/main/screenshots/screenshot_off.png</image>
       <caption>Caffeine Applet inactive in the COSMIC panel</caption>
     </screenshot>
 
     <screenshot>
       <image>
-        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_dark.png</image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/main/screenshots/screenshot_dark.png</image>
       <caption>Caffeine Applet on the COSMIC panel, dark theme</caption>
     </screenshot>
 
     <screenshot>
       <image>
-        https://raw.githubusercontent.com/codevardhan/caffeine-applet/v0.1.2/screenshots/screenshot_light.png</image>
+        https://raw.githubusercontent.com/codevardhan/caffeine-applet/main/screenshots/screenshot_light.png</image>
       <caption>Caffeine Applet on the COSMIC panel, light theme</caption>
     </screenshot>
   </screenshots>
