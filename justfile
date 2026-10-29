@@ -54,17 +54,25 @@ check *args:
 # Runs a clippy check with JSON message format
 check-json: (check '--message-format=json')
 
+# The lint gate CI enforces. Scoped to the binary on purpose: the test module
+# still carries warnings (unused_must_use, field_reassign_with_default) that are
+# being cleaned up separately, and gating on them now would only teach everyone
+# to ignore a red build.
+check-strict:
+    cargo clippy --all-features -- -W clippy::pedantic -D warnings
+
 # Run the application for testing purposes
 run *args:
     env RUST_BACKTRACE=full cargo run --release {{args}}
 
-# Checks the release metadata is consistent. Run before tagging.
+# Checks the release metadata is consistent. Safe at any point in the cycle, so
+# CI runs this on every push; `check-release` adds the pre-tag check on top.
 #
 # Each check here corresponds to a mistake that has actually shipped: 0.1.2 was
 # announced in the AppStream metadata but never tagged, and its four screenshot
 # URLs were pinned to a tag that did not exist yet, so all of them 404'd in the
 # store listing.
-check-release:
+check-metadata:
     #!/usr/bin/env bash
     set -euo pipefail
     status=0
@@ -118,18 +126,30 @@ check-release:
       echo "note: appstreamcli not found, skipping AppStream validation" >&2
     fi
 
+    [ $status -eq 0 ] && echo "Release metadata OK for $cargo_version"
+    exit $status
+
+# Everything in check-metadata, plus the check that only makes sense right
+# before tagging. Kept separate because it is *expected* to fail mid-cycle: the
+# current version's tag already exists and points at an older commit until the
+# version is bumped, so running this on every push would wedge CI red.
+check-release: check-metadata
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo_version="$(sed -n '0,/^version = /s/^version = "\(.*\)"/\1/p' Cargo.toml)"
+
     # Re-tagging a published version silently rewrites history for anyone who
     # already fetched it, so make it a deliberate choice rather than a surprise.
     if git rev-parse -q --verify "refs/tags/v$cargo_version" >/dev/null; then
       if [ "$(git rev-parse "v$cargo_version^{commit}")" = "$(git rev-parse HEAD)" ]; then
         echo "note: v$cargo_version already points at HEAD" >&2
       else
-        fail "v$cargo_version already exists and points elsewhere; moving it rewrites a published tag"
+        echo "FAIL: v$cargo_version already exists and points elsewhere; moving it rewrites a published tag" >&2
+        exit 1
       fi
     fi
 
-    [ $status -eq 0 ] && echo "Release metadata OK for $cargo_version"
-    exit $status
+    echo "Ready to tag v$cargo_version"
 
 # Installs files
 install:
