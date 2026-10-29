@@ -27,7 +27,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev
 
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned, not @stable. check-strict runs clippy with -D warnings, so a
+      # floating toolchain means every clippy release can redden a PR that
+      # touched none of the offending code - which is exactly how an i18n branch
+      # failed on Duration units in tests. Pinning keeps "green locally" and
+      # "green in CI" the same statement. Bump it deliberately, as its own PR,
+      # and fix whatever the new lints find in that PR.
+      #
+      # This is not an MSRV claim; the Flatpak job already builds the shipped
+      # artifact with the COSMIC SDK's own toolchain.
+      - uses: dtolnay/rust-toolchain@1.94.0
         with:
           components: rustfmt, clippy
 
@@ -56,6 +65,11 @@ jobs:
       # identify comes from imagemagick, appstreamcli from appstream. Both are
       # optional in the recipe: without them it skips those checks and still
       # passes, so CI installs them to make sure they actually run.
+      #
+      # Deliberately unpinned, unlike the Rust toolchain above. Flathub validates
+      # submissions with current appstreamcli, so matching the runner's version
+      # is the point - a newer one flagging our metainfo is a real finding, not
+      # churn. Expect this job to go red occasionally on its own.
       - name: Install metadata checkers
         run: |
           sudo apt-get update
