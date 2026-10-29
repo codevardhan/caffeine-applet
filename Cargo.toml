@@ -2,6 +2,10 @@
 name = "caffeine-applet"
 version = "0.1.3"
 edition = "2021"
+# Set by libcosmic 1.0, the highest floor in the tree; our own code only needs
+# 1.87. Declared so an older rustc fails with one clear line instead of a wall
+# of errors from inside a dependency.
+rust-version = "1.93"
 license = "MIT"
 description = "A simple COSMIC applet that prevents your system from going idle by creating a systemd-inhibit lock session."
 repository = "https://github.com/codevardhan/caffeine-applet"
